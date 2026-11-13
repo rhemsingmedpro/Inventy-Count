@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MedPro Inventory Count</title>
+<style>
+:root{--bg:#F4F7FA;--card:#fff;--navy:#003D79;--navy-dark:#002B57;--green:#50B948;--green-dark:#3d9636;--text:#1D2B3A;--muted:#5A6B7B;--line:#DCE3EA;--warn:#B45309;--warn-bg:#FEF3C7;--bad:#B42318;--bad-bg:#FEE4E2;--ok-bg:#E3F5E1;--info-bg:#E4EEF9}
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.4}
+header.top{background:#fff;border-bottom:3px solid var(--green);padding:8px 16px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+header.top img{height:42px}
+header.top .title{font-weight:700;color:var(--navy);font-size:18px;margin-right:auto}
+header.top .who{font-size:13px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.testbar{background:var(--warn-bg);color:var(--warn);font-size:12px;padding:4px 16px;text-align:center}
+nav.tabs{background:var(--navy);display:flex;overflow-x:auto;padding:0 8px}
+nav.tabs button{background:none;border:0;color:#cfe0f3;padding:12px 16px;font-size:14px;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent}
+nav.tabs button.on{color:#fff;border-bottom-color:var(--green);font-weight:600}
+main{padding:16px;max-width:1100px;margin:0 auto}
+h2{color:var(--navy);margin:4px 0 12px;font-size:20px}h3{color:var(--navy);margin:16px 0 8px;font-size:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+button.btn,a.btn{background:var(--navy);color:#fff;border:0;border-radius:7px;padding:8px 14px;font-size:14px;cursor:pointer;text-decoration:none;display:inline-block}
+button.btn:hover{background:var(--navy-dark)}
+button.btn.green{background:var(--green-dark)}button.btn.green:hover{background:#2f7a29}
+button.btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--navy)}
+button.btn.danger{background:#fff;color:var(--bad);border:1px solid var(--bad)}
+button.btn.sm{padding:4px 9px;font-size:13px}
+button.btn:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{font:inherit;padding:7px 9px;border:1px solid #b9c5d1;border-radius:6px;background:#fff;color:var(--text);max-width:100%}
+label.f{display:block;font-size:12px;color:var(--muted);margin-bottom:10px}
+label.f input,label.f select{display:block;margin-top:2px;width:100%}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px}
+.muted{color:var(--muted)}.small{font-size:12px}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;background:var(--info-bg);color:var(--navy)}
+.b-Open{background:var(--warn-bg);color:var(--warn)}.b-Submitted{background:var(--info-bg);color:var(--navy)}.b-Approved{background:var(--ok-bg);color:#2f7a29}.b-ser{background:#EDE7F6;color:#4527A0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{text-align:left;color:var(--muted);font-size:12px;font-weight:600;border-bottom:2px solid var(--line);padding:6px 8px}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tblwrap{overflow-x:auto}
+.alert{padding:10px 12px;border-radius:8px;margin-bottom:12px;font-size:14px}
+.alert.info{background:var(--info-bg)}.alert.warn{background:var(--warn-bg)}.alert.bad{background:var(--bad-bg);color:var(--bad)}
+.login{max-width:420px;margin:40px auto;text-align:center}.login label{text-align:left}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.ccard{background:#fff;border:1px solid var(--line);border-left:5px solid var(--navy);border-radius:10px;padding:12px;cursor:pointer}
+.ccard:hover{border-color:var(--navy)}
+.ccard .nm{font-weight:700;color:var(--navy);font-size:16px}
+.bar{height:8px;background:#e5ebf1;border-radius:4px;overflow:hidden;margin-top:8px}.bar>i{display:block;height:100%;background:var(--green)}
+.sticky{position:sticky;top:0;z-index:20;background:var(--bg);padding:8px 0 6px}
+.sticky .card{margin:0}
+#q{width:100%;font-size:17px;padding:11px 12px;border:2px solid var(--navy);border-radius:8px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chip{border:1px solid var(--navy);color:var(--navy);background:#fff;border-radius:16px;padding:3px 12px;font-size:13px;cursor:pointer}
+.chip.on{background:var(--navy);color:#fff}
+.item{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;background:#fff;border:1px solid var(--line);border-left:5px solid #c5d0db;border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.item.done{border-left-color:var(--green)}
+.item .sn{font-weight:700;color:var(--navy)}.item .ds{font-size:14px}.item .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.item .qty{display:flex;align-items:center;gap:6px}
+.item .qty input{width:92px;font-size:20px;text-align:center;font-weight:700;padding:8px}
+.item.done .qty input{border-color:var(--green)}
+.serpanel{grid-column:1/-1;background:#F7F3FD;border:1px solid #d9cdf0;border-radius:8px;padding:10px}
+.sc{display:inline-flex;gap:6px;align-items:center;background:#fff;border:1px solid #c9b8e8;border-radius:14px;padding:2px 4px 2px 10px;margin:0 6px 6px 0;font-family:Consolas,monospace;font-size:13px}
+.sc a{cursor:pointer;color:var(--bad);font-weight:700;padding:0 6px;text-decoration:none}
+.serpanel input{width:min(360px,100%)}
+.savestate{font-size:12px;color:var(--muted)}.savestate.err{color:var(--bad);font-weight:600}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:12px}
+.modal{background:#fff;border-radius:12px;padding:18px;max-width:560px;width:100%;max-height:90vh;overflow:auto}
+.modal .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;z-index:200;max-width:92vw}
+.toast.err{background:var(--bad)}
+.drop{border:2px dashed #9fb3c8;border-radius:10px;padding:26px;text-align:center;background:#fafcfe}
+.drop.over{background:var(--info-bg);border-color:var(--navy)}
+@media(max-width:600px){.item{grid-template-columns:1fr}.item .qty{justify-content:flex-start}}
+</style>
+</head>
+<body>
+<header class="top"><img src="MedPro-logo.png" alt=""><div class="title">Inventory Count</div><div class="who" id="who"></div></header>
+<div id="demobar"></div>
+<div id="tabs"></div>
+<main id="app"><p class="muted">Loading...</p></main>
+
+<script>
+// Paste the Apps Script Web App URL (ends in /exec) between the quotes. Leave blank to run in DEMO mode (data stored only in this browser).
+const API_URL = 'https://script.google.com/macros/s/AKfycbxc00yoXRCfi3VNTu42r4QoZjeWDG63XqAzr29ygoMwhBCSGUAD1hDBTU-sGHjkIwGb/exec';
+const DEMO = !API_URL;
+
+// ======================= helpers =======================
+const mk = st => { const m = {}; return { getItem: k => { try { return st.getItem(k); } catch (e) { return m[k] === undefined ? null : m[k]; } }, setItem: (k, v) => { try { st.setItem(k, v); } catch (e) { m[k] = String(v); } }, removeItem: k => { try { st.removeItem(k); } catch (e) { delete m[k]; } } }; };
+const pick = n => { try { return window[n] || {}; } catch (e) { return {}; } };
+const LS = mk(pick('localStorage')), SS = mk(pick('sessionStorage'));
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtTime = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); };
+const SER_GUESS = /AIRSENSE|AIRMINI|AIRCURVE|AUTOSET|CONCENTRATOR|VENTILATOR|BIPAP|BILEVEL|OXIMETER|DREAMSTATION|AUTO CPAP|CPAP FLOW GENERATOR/i;
+function toast(m, err) { const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), err ? 5000 : 2500); }
+function modal(html) { closeModal(); const o = document.createElement('div'); o.className = 'overlay'; o.id = 'ov'; o.innerHTML = `<div class="modal">${html}</div>`; document.body.appendChild(o); }
+function closeModal() { const o = $('#ov'); if (o) o.remove(); }
+function confirmBox(title, body, okLabel) { return new Promise(res => { modal(`<h2>${esc(title)}</h2><div>${body}</div><div class="foot"><button class="btn ghost" id="cNo">Cancel</button><button class="btn green" id="cYes">${esc(okLabel || 'OK')}</button></div>`); $('#cNo').onclick = () => { closeModal(); res(false); }; $('#cYes').onclick = () => { closeModal(); res(true); }; }); }
+function download(name, bytes, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: type || 'application/octet-stream' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+
+// bytes <-> "latin1 string" (1 char == 1 byte, so the spool file round-trips exactly)
+const latin1 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return s; };
+const toBytes = s => { const b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 255; return b; };
+const cp1252 = s => new TextDecoder('windows-1252').decode(toBytes(s));
+
+// ======================= spool-file parser / exporter =======================
+const HDR = /^\d{2}-[A-Z]{3}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\[(\d+)\]\s+(\d+)\s+A\b/;
+function leftHalf(ln, key) { const j = ln.indexOf(key, 1); return (j > 0 ? ln.slice(0, j) : ln).replace(/\r$/, ''); }
+function rightHalf(ln, key) { const j = ln.indexOf(key, 1); return j > 0 ? ln.slice(j).replace(/\r$/, '') : null; }
+function parseSpool(txt) {
+  const lines = txt.split('\n'), items = []; let cur = null; const warnings = [];
+  lines.forEach((ln, i) => {
+    const m = HDR.exec(ln);
+    if (m) { cur = { section: m[1], seq: m[2] }; items.push(cur); return; }
+    if (!cur) return;
+    let r;
+    if (ln.startsWith('STOCK NUMBER')) {
+      r = /STOCK NUMBER\s*:\s*(.+?)\s{2,}(\d+)\s*$/.exec(leftHalf(ln, 'STOCK NUMBER'));
+      if (r) { cur.stock = r[1].trim(); cur.loc = r[2]; }
+      const rh = rightHalf(ln, 'STOCK NUMBER'), r2 = rh && /STOCK NUMBER\s*:\s*(.+?)\s{2,}(\d+)\s*$/.exec(rh);
+      if (r2 && cur.stock && r2[1].trim() !== cur.stock) warnings.push(`Item ${cur.stock}: A and B copies differ (${r2[1].trim()}).`);
+    } else if (ln.startsWith('DESCRIPTION')) { r = /DESCRIPTION\s*:\s*(.*?)\s*$/.exec(leftHalf(ln, 'DESCRIPTION')); if (r) cur.desc = r[1]; }
+    else if (ln.startsWith('UNIT MEASURE')) { r = /UNIT MEASURE\s*:\s*(\S+)/.exec(leftHalf(ln, 'UNIT MEASURE')); if (r) cur.uom = r[1]; }
+    else if (ln.startsWith('COUNTED BY')) cur.cbLine = i;
+    else if (ln.startsWith('COUNT DATE')) { r = /COUNT DATE\s*:\s*(\S+)/.exec(leftHalf(ln, 'COUNT DATE')); if (r) cur.date = r[1]; if (/QTY\s_+/.test(ln)) cur.qtyLine = i; }
+  });
+  const good = items.filter(it => it.stock && it.loc && it.qtyLine != null);
+  if (good.length !== items.length) warnings.push(`${items.length - good.length} block(s) could not be read and were skipped.`);
+  return { items: good, warnings, lineCount: lines.length };
+}
+// Replace a run of underscores with text, keeping the line length identical.
+function fillRuns(line, re, text) {
+  let out = '', last = 0, m; re.lastIndex = 0;
+  while ((m = re.exec(line))) {
+    const run = m[1], start = m.index + m[0].length - run.length, tail = line.slice(start + run.length);
+    let sp = 0; while (tail[sp] === ' ') sp++;
+    const avail = run.length + Math.max(0, sp - 2);
+    const t = text.slice(0, avail).padEnd(run.length, ' ');
+    out += line.slice(last, start) + t; last = start + t.length;
+  }
+  return out + line.slice(last);
+}
+function applyCounts(txt, items, values, countedBy) {
+  const lines = txt.split('\n');
+  items.forEach((it, k) => {
+    const v = values[k]; if (v === '' || v == null) return;
+    lines[it.qtyLine] = fillRuns(lines[it.qtyLine], /QTY\s(_+)/g, String(v));
+    if (countedBy && it.cbLine != null) lines[it.cbLine] = fillRuns(lines[it.cbLine], /COUNTED BY\s*:\s*(_+)/g, countedBy);
+  });
+  return lines.join('\n');
+}
+
+// ======================= API =======================
+async function api(action, p = {}) {
+  if (DEMO) return Demo.call(action, p);
+  let r;
+  if (action === 'bootstrap' || action === 'count') r = await (await fetch(API_URL + '?action=' + action + (p.id ? '&id=' + encodeURIComponent(p.id) : ''))).json();
+  else r = await (await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ action }, p)) })).json();
+  if (!r.ok) throw new Error(r.error || 'Request failed');
+  return r.data;
+}
+const adm = (action, p = {}) => api(action, Object.assign({ pin: S.pin }, p));
+
+// ======================= demo backend (browser only) =======================
+const Demo = {
+  load() { try { return JSON.parse(LS.getItem('invcount_demo')) || this.fresh(); } catch (e) { return this.fresh(); } },
+  fresh() { return { staff: ['Demo User'], locations: [], items: {}, counts: [], lines: {}, files: {} }; },
+  save(db) { LS.setItem('invcount_demo', JSON.stringify(db)); },
+  reset() { LS.removeItem('invcount_demo'); },
+  async call(a, p) {
+    const db = this.load(), find = id => { const c = db.counts.find(x => x.id === id); if (!c) throw new Error('Count not found'); return c; };
+    const needAdmin = () => { if (p.pin !== '1234') throw new Error('Admin PIN required'); };
+    const out = (() => {
+      switch (a) {
+        case 'checkPin': return { valid: p.pin === '1234' };
+        case 'bootstrap': {
+          const counts = db.counts.map(c => Object.assign({}, c, { counted: db.lines[c.id].filter(l => l.qty !== '').length }));
+          return { staff: db.staff, locations: db.locations, items: db.items, counts };
+        }
+        case 'count': return { lines: db.lines[p.id] };
+        case 'importCount': {
+          needAdmin();
+          if (!db.locations.find(l => l.id === String(p.locationId))) { if (!p.locationName) throw new Error('Location name required'); db.locations.push({ id: String(p.locationId), name: p.locationName }); }
+          const id = 'C' + Date.now();
+          db.counts.push({ id, loc: String(p.locationId), date: p.countDate, file: p.fileName, status: 'Open', total: p.items.length, counted: 0, importedBy: p.by || 'Admin', importedAt: new Date().toISOString(), submittedBy: '', submittedAt: '', approvedBy: '', approvedAt: '' });
+          db.lines[id] = p.items.map((it, i) => ({ idx: i, stock: it.stock, desc: it.desc, uom: it.uom, section: it.section, seq: it.seq, qty: '', serials: [], by: '' }));
+          db.files[id] = p.fileB64;
+          p.items.forEach(it => { if (!(it.stock in db.items)) db.items[it.stock] = it.serialized ? 'Y' : 'N'; });
+          return { countId: id };
+        }
+        case 'saveLines': {
+          const c = find(p.id); if (c.status !== 'Open') throw new Error('This count is ' + c.status + ' and can no longer be edited.');
+          p.changes.forEach(ch => { const l = db.lines[p.id][ch.idx]; if (l) { l.qty = ch.qty === null ? '' : String(ch.qty); l.serials = ch.serials || []; l.by = p.by; } });
+          return {};
+        }
+        case 'setStatus': {
+          const c = find(p.id), t = new Date().toISOString();
+          if (p.status === 'Submitted') { if (c.status !== 'Open') throw new Error('Count is not open.'); c.status = 'Submitted'; c.submittedBy = p.by; c.submittedAt = t; }
+          else if (p.status === 'Approved') { needAdmin(); if (c.status !== 'Submitted') throw new Error('Only submitted counts can be approved.'); c.status = 'Approved'; c.approvedBy = p.by || 'Admin'; c.approvedAt = t; }
+          else if (p.status === 'Open') { needAdmin(); c.status = 'Open'; c.submittedBy = c.submittedAt = c.approvedBy = c.approvedAt = ''; }
+          return {};
+        }
+        case 'getFile': needAdmin(); return { fileB64: db.files[p.id] };
+        case 'deleteCount': needAdmin(); db.counts = db.counts.filter(c => c.id !== p.id); delete db.lines[p.id]; delete db.files[p.id]; return {};
+        case 'saveLocation': { needAdmin(); const l = db.locations.find(x => x.id === String(p.locationId)); if (l) l.name = p.name; else db.locations.push({ id: String(p.locationId), name: p.name }); return {}; }
+        case 'addStaff': needAdmin(); if (!db.staff.includes(p.name)) db.staff.push(p.name); return {};
+        case 'removeStaff': needAdmin(); db.staff = db.staff.filter(n => n !== p.name); return {};
+        case 'setSerialized': needAdmin(); p.items.forEach(i => { db.items[i.stock] = i.serialized ? 'Y' : 'N'; }); return {};
+      }
+      throw new Error('Unknown action');
+    })();
+    this.save(db);
+    return JSON.parse(JSON.stringify(out));
+  }
+};
+
+// ======================= state =======================
+const S = { user: LS.getItem('invc_user') || '', pin: SS.getItem('invc_pin') || '', data: null, view: 'home', tab: 'counts',
+  cur: null, q: '', filter: 'all', openSer: new Set(), pending: new Map(), saveMsg: '', saveErr: false, office: '', showDone: false, imp: null, aq: '', ast: '', sq: '' };
+const isAdmin = () => !!S.pin;
+const locName = id => { const l = S.data.locations.find(x => x.id === String(id)); return l ? l.name : 'Location ' + id; };
+const isSer = stock => S.data.items[stock] === 'Y';
+
+async function reload() { S.data = await api('bootstrap'); }
+
+// ======================= shell =======================
+function renderShell() {
+  $('#demobar').innerHTML = DEMO ? `<div class="testbar">DEMO MODE - data is stored only in this browser. Admin PIN: 1234. <a href="#" data-act="demoReset">Reset demo data</a></div>` : '';
+  $('#who').innerHTML = (S.user ? `Signed in: <b>${esc(S.user)}</b> <a href="#" data-act="switchUser">switch</a>` : '') + (isAdmin() ? ` <span class="badge b-Approved">Admin</span> <a href="#" data-act="adminLock">lock</a>` : (S.data ? ` <a href="#" data-act="adminOpen">Admin...</a>` : ''));
+  let t = '';
+  if (S.user || isAdmin()) {
+    const tabs = [['home', 'Count']]; if (isAdmin()) tabs.push(['admin', 'Admin']);
+    t = `<nav class="tabs">${tabs.map(x => `<button class="${(S.view === 'count' ? 'home' : S.view) === x[0] ? 'on' : ''}" data-act="nav" data-v="${x[0]}">${x[1]}</button>`).join('')}</nav>`;
+  }
+  $('#tabs').innerHTML = t;
+}
+function render() {
+  renderShell();
+  const app = $('#app');
+  if (!S.user && !(isAdmin() && S.view === 'admin')) { app.innerHTML = loginHtml(); return; }
+  if (S.view === 'count') return renderCount();
+  if (S.view === 'admin' && isAdmin()) return renderAdmin();
+  renderHome();
+}
+function loginHtml() {
+  const staff = S.data.staff;
+  return `<div class="login card"><img src="MedPro-logo.png" height="50" alt=""><h2>Inventory Count</h2>
+  ${staff.length ? `<label class="f">Who is counting?<select id="lgName"><option value="">- select your name -</option>${staff.map(n => `<option>${esc(n)}</option>`).join('')}</select></label>
+  <button class="btn green" data-act="login">Continue</button>` : '<div class="alert info">No staff have been added yet. An Admin must add the staff list first.</div>'}
+  <p class="small" style="margin-top:16px"><a href="#" data-act="adminOpen">Admin...</a> <span class="muted">(import count sheets, approve and export counts)</span></p></div>`;
+}
+
+// ======================= staff: home =======================
+function renderHome() {
+  const D = S.data, offices = D.locations.filter(l => D.counts.some(c => c.loc === l.id));
+  let list = D.counts.filter(c => (!S.office || c.loc === S.office) && (S.showDone || c.status === 'Open'));
+  list.sort((a, b) => locName(a.loc).localeCompare(locName(b.loc)) || (b.importedAt || '').localeCompare(a.importedAt || ''));
+  $('#app').innerHTML = `<h2>Select the count to complete</h2>
+  <div class="row"><label class="f" style="margin:0">Office<select id="offSel"><option value="">All offices</option>${offices.map(o => `<option value="${esc(o.id)}" ${S.office === o.id ? 'selected' : ''}>${esc(o.name)} (${esc(o.id)})</option>`).join('')}</select></label>
+  <label style="font-size:14px"><input type="checkbox" id="showDone" ${S.showDone ? 'checked' : ''}> Show submitted / approved counts</label></div>
+  ${list.length ? `<div class="cgrid">${list.map(c => `<div class="ccard" data-act="openCount" data-id="${esc(c.id)}"><div class="nm">${esc(locName(c.loc))}</div>
+    <div class="small muted">Location ${esc(c.loc)} &middot; Count date ${esc(c.date)}</div>
+    <div style="margin-top:6px"><span class="badge b-${c.status}">${c.status}</span> <span class="small">${c.counted} of ${c.total} counted</span></div>
+    <div class="bar"><i style="width:${c.total ? Math.round(c.counted / c.total * 100) : 0}%"></i></div></div>`).join('')}</div>`
+    : '<div class="alert info">No open counts for this selection. An Admin can import a new count sheet.</div>'}`;
+  $('#offSel').onchange = e => { S.office = e.target.value; renderHome(); };
+  $('#showDone').onchange = e => { S.showDone = e.target.checked; renderHome(); };
+}
+
+// ======================= staff: count screen =======================
+async function openCount(id, fromAdmin) {
+  try {
+    const meta = S.data.counts.find(c => c.id === id), r = await api('count', { id });
+    S.cur = { meta, lines: r.lines, readOnly: meta.status !== 'Open' || (isAdmin() && fromAdmin) , fromAdmin };
+    S.cur.readOnly = meta.status !== 'Open';
+    S.q = ''; S.filter = 'all'; S.openSer = new Set(); S.pending.clear(); S.saveMsg = ''; S.view = 'count'; render();
+  } catch (e) { toast(e.message, true); }
+}
+function stats() {
+  const L = S.cur.lines; return { total: L.length, counted: L.filter(l => l.qty !== '').length };
+}
+function renderCount() {
+  const c = S.cur.meta, st = stats();
+  $('#app').innerHTML = `<div class="sticky"><div class="card">
+    <div class="row" style="margin-bottom:6px"><button class="btn ghost sm" data-act="backCount">&larr; Back</button>
+    <div style="flex:1;min-width:180px"><b style="color:var(--navy)">${esc(locName(c.loc))}</b> <span class="small muted">Loc ${esc(c.loc)} &middot; ${esc(c.date)}</span> <span class="badge b-${c.status}">${c.status}</span>
+    <div class="small"><span id="prog"></span> <span class="savestate" id="savest"></span></div></div>
+    ${S.cur.readOnly ? '' : '<button class="btn green" data-act="submitCount">Mark as Submitted</button>'}</div>
+    <input id="q" type="search" placeholder="Search stock number, description or serial number..." autocomplete="off" value="${esc(S.q)}">
+    <div class="chips" id="chips"></div></div></div>
+    ${S.cur.readOnly ? `<div class="alert info" style="margin-top:10px">This count is ${c.status.toLowerCase()} and is read-only.${isAdmin() ? ' Use Admin &gt; Reopen to send it back for changes.' : ''}</div>` : ''}
+    <div id="list" style="margin-top:8px"></div>`;
+  $('#q').addEventListener('input', e => { S.q = e.target.value; renderList(); });
+  if (!S.cur.readOnly && window.innerWidth > 700) $('#q').focus();
+  renderChips(); renderList(); updateProg();
+}
+function updateProg() {
+  const st = stats(), el = $('#prog'); if (el) el.textContent = `${st.counted} of ${st.total} counted`;
+  const s = $('#savest'); if (s) { s.textContent = S.saveMsg; s.className = 'savestate' + (S.saveErr ? ' err' : ''); }
+}
+function renderChips() {
+  const L = S.cur.lines, n = { all: L.length, todo: L.filter(l => l.qty === '').length, done: L.filter(l => l.qty !== '').length, ser: L.filter(l => isSer(l.stock)).length };
+  $('#chips').innerHTML = [['all', 'All'], ['todo', 'To count'], ['done', 'Counted'], ['ser', 'Serialized']].map(([k, t]) => `<span class="chip ${S.filter === k ? 'on' : ''}" data-act="chip" data-k="${k}">${t} (${n[k]})</span>`).join('');
+}
+function matches(l) {
+  if (S.filter === 'todo' && l.qty !== '') return false;
+  if (S.filter === 'done' && l.qty === '') return false;
+  if (S.filter === 'ser' && !isSer(l.stock)) return false;
+  const words = S.q.toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return true;
+  const hay = (l.stock + ' ' + l.desc + ' ' + l.serials.join(' ')).toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+function renderList() {
+  const rows = S.cur.lines.filter(matches);
+  $('#list').innerHTML = rows.length ? rows.map(itemHtml).join('') : '<div class="alert info">No items match.</div>';
+}
+function itemHtml(l) {
+  const ro = S.cur.readOnly, ser = isSer(l.stock), open = S.openSer.has(l.idx), n = l.serials.length;
+  return `<div class="item ${l.qty !== '' ? 'done' : ''}" id="it${l.idx}"><div><div class="sn">${esc(l.stock)}</div><div class="ds">${esc(l.desc)}</div>
+    <div class="meta">${esc(l.uom)} &middot; Sec ${esc(l.section)} / ${esc(l.seq)} ${ser ? '<span class="badge b-ser">Serialized</span>' : ''}</div></div>
+    <div class="qty">${ser ? `<button class="btn sm ghost" data-act="ser" data-i="${l.idx}">Serial #s (${n})</button>` : ''}
+    <input type="number" min="0" step="1" inputmode="numeric" data-qty="${l.idx}" value="${esc(l.qty)}" placeholder="Qty" ${ro ? 'disabled' : ''} aria-label="Quantity on hand"></div>
+    ${ser && open ? serPanel(l, ro) : ''}</div>`;
+}
+function serPanel(l, ro) {
+  const q = l.qty === '' ? 0 : Number(l.qty);
+  return `<div class="serpanel"><div>${l.serials.length ? l.serials.map((s, k) => `<span class="sc">${esc(s)}${ro ? '' : `<a data-act="serdel" data-i="${l.idx}" data-k="${k}" title="Remove">&times;</a>`}</span>`).join('') : '<span class="small muted">No serial numbers recorded.</span>'}</div>
+    ${ro ? '' : `<div class="row" style="margin:6px 0 0"><input class="serin" data-i="${l.idx}" placeholder="Scan or type serial number, press Enter" autocomplete="off"><button class="btn sm green" data-act="seradd" data-i="${l.idx}">Add</button></div>`}
+    <div class="small ${l.serials.length !== q ? '' : 'muted'}" style="margin-top:4px;${l.serials.length !== q ? 'color:var(--warn)' : ''}">${l.serials.length} serial number(s) recorded &middot; quantity counted: ${l.qty === '' ? 'not entered' : q}</div></div>`;
+}
+function refreshRow(i, focusSer) {
+  const el = $('#it' + i), l = S.cur.lines[i]; if (!el) return;
+  el.outerHTML = itemHtml(l);
+  if (focusSer) { const inp = $(`#it${i} .serin`); if (inp) inp.focus(); }
+}
+// --- saving ---
+let saveTimer = null;
+function queue(i) { const l = S.cur.lines[i]; S.pending.set(i, { idx: i, qty: l.qty === '' ? null : Number(l.qty), serials: l.serials.slice() }); S.saveMsg = 'Saving...'; S.saveErr = false; updateProg(); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 700); }
+async function flush() {
+  clearTimeout(saveTimer); if (!S.pending.size || !S.cur) return;
+  const snap = new Map(S.pending), changes = [...snap.values()], id = S.cur.meta.id; S.pending.clear();
+  try { await api('saveLines', { id, by: S.user, changes }); if (!S.pending.size) { S.saveMsg = 'All changes saved'; S.saveErr = false; } }
+  catch (e) { snap.forEach((v, k) => { if (!S.pending.has(k)) S.pending.set(k, v); }); S.saveMsg = 'NOT SAVED - retrying (' + e.message + ')'; S.saveErr = true; saveTimer = setTimeout(flush, 4000); }
+  updateProg();
+}
+window.addEventListener('beforeunload', e => { if (S.pending.size) { e.preventDefault(); e.returnValue = ''; } });
+
+function addSerials(i, raw) {
+  const l = S.cur.lines[i], parts = raw.split(/[\n\r,;\t]+/).map(s => s.trim()).filter(Boolean); let added = 0;
+  parts.forEach(s => {
+    if (l.serials.includes(s)) return toast(`${s} is already recorded for this item.`, true);
+    const dup = S.cur.lines.find(x => x.idx !== i && x.serials.includes(s));
+    if (dup) return toast(`${s} is already recorded on ${dup.stock}.`, true);
+    l.serials.push(s); added++;
+  });
+  if (added && (l.qty === '' || Number(l.qty) < l.serials.length)) l.qty = String(l.serials.length);
+  if (added) queue(l.idx);
+  refreshRow(i, true); renderChips(); updateProg();
+}
+
+async function submitCount() {
+  await flush(); if (S.pending.size) return toast('Changes are not saved yet - check your connection.', true);
+  const L = S.cur.lines, todo = L.filter(l => l.qty === ''), mism = L.filter(l => isSer(l.stock) && l.serials.length && l.serials.length !== Number(l.qty || 0));
+  let body = `<p>Submit the count for <b>${esc(locName(S.cur.meta.loc))}</b>? You will not be able to change it afterward.</p>`;
+  if (todo.length) body += `<div class="alert warn"><b>${todo.length}</b> item(s) have no quantity entered and will be left blank:<br><span class="small">${todo.slice(0, 12).map(l => esc(l.stock)).join(', ')}${todo.length > 12 ? ', ...' : ''}</span><br>Enter 0 for items you have none of.</div>`;
+  if (mism.length) body += `<div class="alert warn"><b>${mism.length}</b> serialized item(s) have a different number of serial numbers than the quantity counted:<br><span class="small">${mism.slice(0, 8).map(l => `${esc(l.stock)} (${l.serials.length} serials / qty ${esc(l.qty)})`).join('<br>')}</span></div>`;
+  if (!await confirmBox('Mark count as Submitted', body, 'Submit count')) return;
+  try { await api('setStatus', { id: S.cur.meta.id, status: 'Submitted', by: S.user }); await reload(); toast('Count submitted. Thank you!'); S.view = 'home'; render(); } catch (e) { toast(e.message, true); }
+}
+
+// ======================= admin =======================
+function renderAdmin() {
+  const tabs = [['counts', 'Counts'], ['import', 'Import count sheet'], ['offices', 'Offices'], ['staff', 'Staff'], ['serial', 'Serialized items']];
+  $('#app').innerHTML = `<h2>Admin</h2><div class="row">${tabs.map(t => `<button class="btn ${S.tab === t[0] ? '' : 'ghost'}" data-act="admTab" data-v="${t[0]}">${t[1]}</button>`).join('')}</div><div id="admBody"></div>`;
+  ({ counts: admCounts, import: admImport, offices: admOffices, staff: admStaff, serial: admSerial })[S.tab]();
+}
+function admCounts() {
+  $('#admBody').innerHTML = `<div class="card"><div class="row"><label class="f" style="margin:0;flex:1;min-width:220px">Search counts<input id="aq" placeholder="Office name, Location ID, count date, file name..." value="${esc(S.aq)}"></label>
+  <label class="f" style="margin:0">Status<select id="ast"><option value="">All</option>${['Open', 'Submitted', 'Approved'].map(s => `<option ${S.ast === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label></div>
+  <div class="tblwrap"><table><thead><tr><th>Office</th><th>Count date</th><th>Status</th><th>Progress</th><th>Submitted</th><th></th></tr></thead><tbody id="ctb"></tbody></table></div></div>`;
+  const draw = () => {
+    const w = S.aq.toLowerCase().split(/\s+/).filter(Boolean);
+    const rows = S.data.counts.filter(c => (!S.ast || c.status === S.ast) && w.every(x => (locName(c.loc) + ' ' + c.loc + ' ' + c.date + ' ' + c.file + ' ' + c.status).toLowerCase().includes(x)))
+      .sort((a, b) => (b.importedAt || '').localeCompare(a.importedAt || ''));
+    $('#ctb').innerHTML = rows.map(c => `<tr><td><b>${esc(locName(c.loc))}</b><div class="small muted">Loc ${esc(c.loc)} &middot; ${esc(c.file)}</div></td><td>${esc(c.date)}</td><td><span class="badge b-${c.status}">${c.status}</span></td>
+      <td>${c.counted}/${c.total}</td><td class="small">${c.submittedBy ? esc(c.submittedBy) + '<br>' + esc(fmtTime(c.submittedAt)) : ''}${c.approvedBy ? '<br>Approved: ' + esc(c.approvedBy) : ''}</td>
+      <td style="white-space:nowrap"><button class="btn sm ghost" data-act="admView" data-id="${esc(c.id)}">View</button>
+      ${c.status === 'Submitted' ? `<button class="btn sm green" data-act="admApprove" data-id="${esc(c.id)}">Approve</button>` : ''}
+      ${c.status !== 'Open' ? `<button class="btn sm" data-act="admExport" data-id="${esc(c.id)}">Export Excel</button> <button class="btn sm ghost" data-act="admReopen" data-id="${esc(c.id)}">Reopen</button>` : ''}
+      <button class="btn sm danger" data-act="admDelete" data-id="${esc(c.id)}">Delete</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No counts found.</td></tr>';
+  };
+  $('#aq').oninput = e => { S.aq = e.target.value; draw(); }; $('#ast').onchange = e => { S.ast = e.target.value; draw(); }; draw();
+}
+function admImport() {
+  const I = S.imp;
+  let prev = '';
+  if (I) {
+    if (I.error) prev = `<div class="alert bad">${esc(I.error)}</div>`;
+    else {
+      const known = S.data.locations.find(l => l.id === I.locId);
+      prev = `<div class="card"><h3 style="margin-top:0">Ready to import</h3>
+      <p><b>${I.parsed.items.length}</b> items &middot; Location ID <b>${esc(I.locId)}</b> &middot; Count date <b>${esc(I.date)}</b> &middot; File <span class="muted">${esc(I.fileName)}</span></p>
+      ${I.parsed.warnings.map(w => `<div class="alert warn">${esc(w)}</div>`).join('')}
+      ${known ? `<div class="alert info">Office: <b>${esc(known.name)}</b> (matched from Location ID ${esc(I.locId)})</div>`
+        : `<div class="alert warn">Location ID <b>${esc(I.locId)}</b> has not been used before. Please name this office:<label class="f" style="margin-top:8px">Office name<input id="newLoc" placeholder="e.g. Kamloops"></label></div>`}
+      <div class="small muted" style="margin-bottom:10px">First items: ${I.parsed.items.slice(0, 5).map(i => esc(i.stock) + ' - ' + esc(cp1252(i.desc || ''))).join(' &nbsp;|&nbsp; ')}</div>
+      <button class="btn green" data-act="doImport">Import count</button> <button class="btn ghost" data-act="cancelImport">Cancel</button></div>`;
+    }
+  }
+  $('#admBody').innerHTML = `<div class="card"><h3 style="margin-top:0">Add a count sheet</h3><p class="muted small">Upload the count sheet exported from the billing software (the spool .txt file). One office per file. The Location ID is read from the sheet.</p>
+  <div class="drop" id="drop">Drag the count sheet here or <input type="file" id="impFile" accept=".txt,text/plain,*/*"></div></div>${prev}`;
+  const take = f => f && f.arrayBuffer().then(buf => {
+    const txt = latin1(new Uint8Array(buf)), parsed = parseSpool(txt);
+    const locs = [...new Set(parsed.items.map(i => i.loc))], dates = [...new Set(parsed.items.map(i => i.date).filter(Boolean))];
+    S.imp = { fileName: f.name, txt, parsed };
+    if (!parsed.items.length) S.imp.error = 'No count items were recognised in this file. Is it the count-sheet export?';
+    else if (locs.length > 1) S.imp.error = `This file contains more than one Location ID (${locs.join(', ')}). Please export one office per file.`;
+    else { S.imp.locId = locs[0]; S.imp.date = dates.join(' / '); }
+    admImport();
+  });
+  $('#impFile').onchange = e => take(e.target.files[0]);
+  const d = $('#drop'); d.ondragover = e => { e.preventDefault(); d.classList.add('over'); }; d.ondragleave = () => d.classList.remove('over');
+  d.ondrop = e => { e.preventDefault(); d.classList.remove('over'); take(e.dataTransfer.files[0]); };
+}
+async function doImport() {
+  const I = S.imp, known = S.data.locations.find(l => l.id === I.locId), nm = $('#newLoc') ? $('#newLoc').value.trim() : '';
+  if (!known && !nm) return toast('Please enter a name for this office.', true);
+  const items = I.parsed.items.map(i => { const desc = cp1252(i.desc || ''); return { stock: i.stock, desc, uom: i.uom || '', section: i.section, seq: i.seq, serialized: SER_GUESS.test(desc) }; });
+  try {
+    await adm('importCount', { locationId: I.locId, locationName: known ? '' : nm, countDate: I.date, fileName: I.fileName, items, fileB64: btoa(I.txt), by: S.user || 'Admin' });
+    S.imp = null; await reload(); S.tab = 'counts'; renderAdmin(); toast('Count imported.');
+  } catch (e) { toast(e.message, true); }
+}
+function admOffices() {
+  const used = S.data.counts.map(c => c.loc);
+  $('#admBody').innerHTML = `<div class="card"><p class="muted small">Office names are remembered by Location ID and applied automatically when a new count sheet is imported.</p><table><thead><tr><th>Location ID</th><th>Office name</th><th></th></tr></thead><tbody>
+  ${S.data.locations.map(l => `<tr><td>${esc(l.id)}</td><td><input data-loc="${esc(l.id)}" value="${esc(l.name)}" style="width:100%"></td><td><button class="btn sm" data-act="saveLoc" data-id="${esc(l.id)}">Save</button></td></tr>`).join('') || '<tr><td colspan="3" class="muted">No offices yet - they are added when you import a count sheet.</td></tr>'}</tbody></table></div>`;
+}
+function admStaff() {
+  $('#admBody').innerHTML = `<div class="card"><p class="muted small">Staff pick their name from this list to sign in.</p><div class="row"><label class="f" style="margin:0">Add staff member<input id="newStaff" placeholder="Full name"></label><button class="btn green" data-act="addStaff">Add</button></div>
+  <table><tbody>${S.data.staff.map(n => `<tr><td>${esc(n)}</td><td style="text-align:right"><button class="btn sm danger" data-act="rmStaff" data-n="${esc(n)}">Remove</button></td></tr>`).join('') || '<tr><td class="muted">No staff yet.</td></tr>'}</tbody></table></div>`;
+}
+function admSerial() {
+  const items = Object.keys(S.data.items).sort(), descOf = {};
+  S.data.counts.forEach(() => {}); // descriptions come from the last viewed counts; fall back to stock number only
+  $('#admBody').innerHTML = `<div class="card"><p class="muted small">Tick the products that carry serial numbers. Staff will see a <b>Serial #s</b> button on those items. New products are ticked automatically when the description looks like a device (CPAP, concentrator, etc.) - please review.</p>
+  <div class="row"><label class="f" style="margin:0;flex:1">Search<input id="sq" value="${esc(S.sq)}" placeholder="Stock number..."></label><span class="muted small" id="scnt"></span></div><div id="slist"></div></div>`;
+  const draw = () => {
+    const w = S.sq.toLowerCase();
+    const rows = items.filter(s => s.toLowerCase().includes(w));
+    $('#scnt').textContent = `${items.filter(isSer).length} serialized of ${items.length}`;
+    $('#slist').innerHTML = rows.map(s => `<label style="display:block;padding:5px 0;border-bottom:1px solid var(--line)"><input type="checkbox" data-ser="${esc(s)}" ${isSer(s) ? 'checked' : ''}> ${esc(s)} <span class="muted small">${esc(stockDesc(s))}</span></label>`).join('') || '<div class="muted">No items.</div>';
+  };
+  $('#sq').oninput = e => { S.sq = e.target.value; draw(); }; draw();
+}
+const descCache = {};
+function stockDesc(s) { return descCache[s] || ''; }
+
+async function loadAllDescriptions() {
+  // fetch descriptions of items once for the serialized-items tab
+  for (const c of S.data.counts) { if (c._d) continue; try { const r = await api('count', { id: c.id }); r.lines.forEach(l => { descCache[l.stock] = l.desc; }); c._d = 1; } catch (e) {} }
+}
+
+// ---- minimal .xlsx writer (no libraries): text cells keep leading zeros ----
+const CRC_T = (() => { const t = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u8 => { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipStore(files) { // files: [{name, data(string)}]
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  const u16 = n => [n & 255, (n >>> 8) & 255], u32 = n => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+  files.forEach(f => {
+    const name = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
+    const common = [...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)];
+    parts.push(new Uint8Array([0x50, 0x4B, 3, 4, ...common]), name, data);
+    central.push(new Uint8Array([0x50, 0x4B, 1, 2, ...u16(20), ...common, ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off)]), name);
+    off += 30 + name.length + data.length;
+  });
+  const cdSize = central.reduce((n, a) => n + a.length, 0);
+  const end = new Uint8Array([0x50, 0x4B, 5, 6, 0, 0, 0, 0, ...u16(files.length), ...u16(files.length), ...u32(cdSize), ...u32(off), 0, 0]);
+  const all = [...parts, ...central, end], out = new Uint8Array(all.reduce((n, a) => n + a.length, 0)); let p = 0;
+  all.forEach(a => { out.set(a, p); p += a.length; }); return out;
+}
+function buildXlsx(sheetName, rows, widths) { // rows: array of arrays; numbers become numeric cells, everything else text
+  const X = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const col = i => { let s = ''; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s; };
+  const sheetRows = rows.map((r, ri) => `<row r="${ri + 1}">` + r.map((v, ci) => {
+    const ref = col(ci) + (ri + 1), st = ri === 0 ? ' s="1"' : '';
+    if (v === '' || v == null) return '';
+    if (typeof v === 'number') return `<c r="${ref}"${st}><v>${v}</v></c>`;
+    return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${X(v)}</t></is></c>`;
+  }).join('') + '</row>').join('');
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main', RS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships', PR = 'http://schemas.openxmlformats.org/package/2006/relationships';
+  const H = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  return zipStore([
+    { name: '[Content_Types].xml', data: H + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
+    { name: '_rels/.rels', data: H + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${RS}/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
+    { name: 'xl/workbook.xml', data: H + `<workbook xmlns="${NS}" xmlns:r="${RS}"><sheets><sheet name="${X(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: 'xl/_rels/workbook.xml.rels', data: H + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${RS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RS}/styles" Target="styles.xml"/></Relationships>` },
+    { name: 'xl/styles.xml', data: H + `<styleSheet xmlns="${NS}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>` },
+    { name: 'xl/worksheets/sheet1.xml', data: H + `<worksheet xmlns="${NS}"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${sheetRows}</sheetData></worksheet>` }
+  ]);
+}
+async function exportXlsx(id) {
+  const c = S.data.counts.find(x => x.id === id);
+  try {
+    const r = await api('count', { id });
+    const rows = [['Location ID', 'Office', 'Count date', 'Line', 'Section', 'Stock number', 'Description', 'Unit', 'Qty counted', 'Serial numbers', 'Counted by']];
+    r.lines.forEach((l, k) => rows.push([c.loc, locName(c.loc), c.date, k + 1, l.section + ' ' + l.seq, l.stock, l.desc, l.uom, l.qty === '' ? '' : Number(l.qty), l.serials.join('; '), c.submittedBy]));
+    const name = `count-${locName(c.loc).replace(/[^\w-]+/g, '_')}-loc${c.loc}-${c.date.replace(/\//g, '-')}.xlsx`;
+    download(name, buildXlsx('Count', rows, [11, 18, 12, 6, 10, 20, 42, 7, 12, 40, 18]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Exported ' + name);
+  } catch (e) { toast(e.message, true); }
+}
+
+// ======================= events =======================
+document.addEventListener('click', async e => {
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const a = t.dataset.act, id = t.dataset.id; if (t.tagName === 'A') e.preventDefault();
+  try {
+    switch (a) {
+      case 'login': { const n = $('#lgName').value; if (!n) return toast('Select your name.', true); S.user = n; LS.setItem('invc_user', n); render(); break; }
+      case 'switchUser': S.user = ''; LS.removeItem('invc_user'); S.view = 'home'; render(); break;
+      case 'nav': if (S.pending.size) await flush(); S.view = t.dataset.v; if (S.view === 'admin') { await reload(); } else await reload(); render(); break;
+      case 'openCount': openCount(id); break;
+      case 'backCount': await flush(); await reload(); S.view = S.cur.fromAdmin ? 'admin' : 'home'; render(); break;
+      case 'chip': S.filter = t.dataset.k; renderChips(); renderList(); break;
+      case 'ser': { const i = +t.dataset.i; S.openSer.has(i) ? S.openSer.delete(i) : S.openSer.add(i); refreshRow(i, true); break; }
+      case 'seradd': { const i = +t.dataset.i, inp = $(`#it${i} .serin`); if (inp && inp.value.trim()) addSerials(i, inp.value); break; }
+      case 'serdel': { const i = +t.dataset.i, l = S.cur.lines[i]; l.serials.splice(+t.dataset.k, 1); queue(i); refreshRow(i); break; }
+      case 'submitCount': submitCount(); break;
+      case 'adminOpen': modal(`<h2>Admin PIN</h2><label class="f">Enter the Admin PIN<input id="pinIn" type="password" autocomplete="off"></label><div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn green" data-act="adminCheck">Unlock</button></div>`); setTimeout(() => { const i = $('#pinIn'); if (i) { i.focus(); i.onkeydown = ev => { if (ev.key === 'Enter') $('[data-act=adminCheck]').click(); }; } }, 50); break;
+      case 'closeModal': closeModal(); break;
+      case 'adminCheck': { const pin = $('#pinIn').value; const r = await api('checkPin', { pin }); if (!r.valid) return toast('Incorrect PIN.', true); S.pin = pin; SS.setItem('invc_pin', pin); closeModal(); S.view = 'admin'; S.tab = 'counts'; await reload(); render(); break; }
+      case 'adminLock': S.pin = ''; SS.removeItem('invc_pin'); S.view = 'home'; render(); break;
+      case 'demoReset': if (await confirmBox('Reset demo data', 'Delete all demo data stored in this browser?', 'Reset')) { Demo.reset(); S.pin = ''; SS.removeItem('invc_pin'); await reload(); S.view = 'home'; render(); } break;
+      case 'admTab': S.tab = t.dataset.v; renderAdmin(); if (S.tab === 'serial') loadAllDescriptions().then(() => { if (S.tab === 'serial' && S.view === 'admin') admSerial(); }); break;
+      case 'admView': openCount(id, true); break;
+      case 'admApprove': if (await confirmBox('Approve count', 'Approve this count? It can then be exported.', 'Approve')) { await adm('setStatus', { id, status: 'Approved', by: S.user || 'Admin' }); await reload(); admCounts(); toast('Approved.'); } break;
+      case 'admReopen': if (await confirmBox('Reopen count', 'Return this count to staff so it can be edited again?', 'Reopen')) { await adm('setStatus', { id, status: 'Open' }); await reload(); admCounts(); toast('Count reopened.'); } break;
+      case 'admDelete': if (await confirmBox('Delete count', '<b>Permanently delete</b> this count, including quantities and serial numbers? This cannot be undone.', 'Delete')) { await adm('deleteCount', { id }); await reload(); admCounts(); toast('Deleted.'); } break;
+      case 'admExport': exportXlsx(id); break;
+      case 'doImport': doImport(); break;
+      case 'cancelImport': S.imp = null; admImport(); break;
+      case 'saveLoc': { const inp = document.querySelector(`[data-loc="${CSS.escape(id)}"]`); if (!inp.value.trim()) return toast('Name required.', true); await adm('saveLocation', { locationId: id, name: inp.value.trim() }); await reload(); toast('Saved.'); break; }
+      case 'addStaff': { const v = $('#newStaff').value.trim(); if (!v) return; await adm('addStaff', { name: v }); await reload(); admStaff(); break; }
+      case 'rmStaff': if (await confirmBox('Remove staff', 'Remove ' + esc(t.dataset.n) + ' from the sign-in list?', 'Remove')) { await adm('removeStaff', { name: t.dataset.n }); await reload(); admStaff(); } break;
+    }
+  } catch (err) { toast(err.message, true); }
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset && t.dataset.qty !== undefined && S.cur) {
+    const i = +t.dataset.qty, l = S.cur.lines[i], v = t.value.trim();
+    l.qty = v === '' ? '' : String(Math.max(0, Math.floor(Number(v)) || 0));
+    t.closest('.item').classList.toggle('done', l.qty !== ''); queue(i); updateProg(); renderChips();
+  }
+});
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t.classList && t.classList.contains('serin') && e.key === 'Enter') { e.preventDefault(); if (t.value.trim()) addSerials(+t.dataset.i, t.value); }
+  else if (t.dataset && t.dataset.qty !== undefined && e.key === 'Enter') {
+    e.preventDefault(); const all = [...document.querySelectorAll('[data-qty]')], k = all.indexOf(t); if (all[k + 1]) { all[k + 1].focus(); all[k + 1].select(); }
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset && t.dataset.ser !== undefined) {
+    adm('setSerialized', { items: [{ stock: t.dataset.ser, serialized: t.checked }] }).then(() => { S.data.items[t.dataset.ser] = t.checked ? 'Y' : 'N'; const c = $('#scnt'); if (c) c.textContent = `${Object.keys(S.data.items).filter(isSer).length} serialized of ${Object.keys(S.data.items).length}`; })
+      .catch(err => { toast(err.message, true); t.checked = !t.checked; });
+  }
+});
+
+(async function init() {
+  try { await reload(); if (isAdmin()) { const ok = await api('checkPin', { pin: S.pin }); if (!ok.valid) { S.pin = ''; SS.removeItem('invc_pin'); } } render(); }
+  catch (e) { $('#app').innerHTML = `<div class="alert bad">Could not load data: ${esc(e.message)}</div>`; }
+})();
+</script>
+</body>
+</html>
