@@ -181,7 +181,7 @@ const Demo = {
           needAdmin();
           if (!db.locations.find(l => l.id === String(p.locationId))) { if (!p.locationName) throw new Error('Location name required'); db.locations.push({ id: String(p.locationId), name: p.locationName }); }
           const id = 'C' + Date.now();
-          db.counts.push({ id, loc: String(p.locationId), date: p.countDate, file: p.fileName, status: 'Open', total: p.items.length, counted: 0, importedBy: p.by || 'Admin', importedAt: new Date().toISOString(), submittedBy: '', submittedAt: '', approvedBy: '', approvedAt: '' });
+          db.counts.push({ id, loc: String(p.locationId), date: p.countDate, file: p.fileName, status: 'Open', name: p.name || '', total: p.items.length, counted: 0, importedBy: p.by ||'Admin', importedAt: new Date().toISOString(), submittedBy: '', submittedAt: '', approvedBy: '', approvedAt: '' });
           db.lines[id] = p.items.map((it, i) => ({ idx: i, stock: it.stock, desc: it.desc, uom: it.uom, section: it.section, seq: it.seq, qty: '', serials: [], by: '' }));
           db.files[id] = p.fileB64;
           p.items.forEach(it => { if (!(it.stock in db.items)) db.items[it.stock] = it.serialized ? 'Y' : 'N'; });
@@ -204,6 +204,8 @@ const Demo = {
         case 'saveLocation': { needAdmin(); const l = db.locations.find(x => x.id === String(p.locationId)); if (l) l.name = p.name; else db.locations.push({ id: String(p.locationId), name: p.name }); return {}; }
         case 'addStaff': needAdmin(); if (!db.staff.includes(p.name)) db.staff.push(p.name); return {};
         case 'removeStaff': needAdmin(); db.staff = db.staff.filter(n => n !== p.name); return {};
+        case 'renameCount': needAdmin(); find(p.id).name = p.name || ''; return {};
+        case 'enableSerialized': db.items[p.stock] = 'Y'; return {};
         case 'setSerialized': needAdmin(); p.items.forEach(i => { db.items[i.stock] = i.serialized ? 'Y' : 'N'; }); return {};
       }
       throw new Error('Unknown action');
@@ -219,6 +221,7 @@ const S = { user: LS.getItem('invc_user') || '', pin: SS.getItem('invc_pin') || 
 const isAdmin = () => !!S.pin;
 const locName = id => { const l = S.data.locations.find(x => x.id === String(id)); return l ? l.name : 'Location ' + id; };
 const isSer = stock => S.data.items[stock] === 'Y';
+const cname = c => c.name || ('Count ' + c.date);
 
 async function reload() { S.data = await api('bootstrap'); }
 
@@ -257,8 +260,8 @@ function renderHome() {
   $('#app').innerHTML = `<h2>Select the count to complete</h2>
   <div class="row"><label class="f" style="margin:0">Office<select id="offSel"><option value="">All offices</option>${offices.map(o => `<option value="${esc(o.id)}" ${S.office === o.id ? 'selected' : ''}>${esc(o.name)} (${esc(o.id)})</option>`).join('')}</select></label>
   <label style="font-size:14px"><input type="checkbox" id="showDone" ${S.showDone ? 'checked' : ''}> Show submitted / approved counts</label></div>
-  ${list.length ? `<div class="cgrid">${list.map(c => `<div class="ccard" data-act="openCount" data-id="${esc(c.id)}"><div class="nm">${esc(locName(c.loc))}</div>
-    <div class="small muted">Location ${esc(c.loc)} &middot; Count date ${esc(c.date)}</div>
+  ${list.length ? `<div class="cgrid">${list.map(c => `<div class="ccard" data-act="openCount" data-id="${esc(c.id)}"><div class="nm">${esc(cname(c))}</div>
+    <div class="small"><b>${esc(locName(c.loc))}</b> <span class="muted">&middot; Location ${esc(c.loc)} &middot; Count date ${esc(c.date)}</span></div>
     <div style="margin-top:6px"><span class="badge b-${c.status}">${c.status}</span> <span class="small">${c.counted} of ${c.total} counted</span></div>
     <div class="bar"><i style="width:${c.total ? Math.round(c.counted / c.total * 100) : 0}%"></i></div></div>`).join('')}</div>`
     : '<div class="alert info">No open counts for this selection. An Admin can import a new count sheet.</div>'}`;
@@ -282,7 +285,7 @@ function renderCount() {
   const c = S.cur.meta, st = stats();
   $('#app').innerHTML = `<div class="sticky"><div class="card">
     <div class="row" style="margin-bottom:6px"><button class="btn ghost sm" data-act="backCount">&larr; Back</button>
-    <div style="flex:1;min-width:180px"><b style="color:var(--navy)">${esc(locName(c.loc))}</b> <span class="small muted">Loc ${esc(c.loc)} &middot; ${esc(c.date)}</span> <span class="badge b-${c.status}">${c.status}</span>
+    <div style="flex:1;min-width:180px"><b style="color:var(--navy)">${esc(cname(c))}</b> <span class="small muted">${esc(locName(c.loc))} (Loc ${esc(c.loc)}) &middot; ${esc(c.date)}</span> <span class="badge b-${c.status}">${c.status}</span>
     <div class="small"><span id="prog"></span> <span class="savestate" id="savest"></span></div></div>
     ${S.cur.readOnly ? '' : '<button class="btn green" data-act="submitCount">Mark as Submitted</button>'}</div>
     <input id="q" type="search" placeholder="Search stock number, description or serial number..." autocomplete="off" value="${esc(S.q)}">
@@ -317,7 +320,7 @@ function itemHtml(l) {
   const ro = S.cur.readOnly, ser = isSer(l.stock), open = S.openSer.has(l.idx), n = l.serials.length;
   return `<div class="item ${l.qty !== '' ? 'done' : ''}" id="it${l.idx}"><div><div class="sn">${esc(l.stock)}</div><div class="ds">${esc(l.desc)}</div>
     <div class="meta">${esc(l.uom)} &middot; Sec ${esc(l.section)} / ${esc(l.seq)} ${ser ? '<span class="badge b-ser">Serialized</span>' : ''}</div></div>
-    <div class="qty">${ser ? `<button class="btn sm ghost" data-act="ser" data-i="${l.idx}">Serial #s (${n})</button>` : ''}
+    <div class="qty">${ser ? `<button class="btn sm ghost" data-act="ser" data-i="${l.idx}">Serial #s (${n})</button>` : (ro ? '' : `<label class="small muted" style="cursor:pointer;white-space:nowrap" title="Tick if this product has serial numbers"><input type="checkbox" data-enser="${l.idx}"> Has serial #s</label>`)}
     <input type="number" min="0" step="1" inputmode="numeric" data-qty="${l.idx}" value="${esc(l.qty)}" placeholder="Qty" ${ro ? 'disabled' : ''} aria-label="Quantity on hand"></div>
     ${ser && open ? serPanel(l, ro) : ''}</div>`;
 }
@@ -360,7 +363,7 @@ function addSerials(i, raw) {
 async function submitCount() {
   await flush(); if (S.pending.size) return toast('Changes are not saved yet - check your connection.', true);
   const L = S.cur.lines, todo = L.filter(l => l.qty === ''), mism = L.filter(l => isSer(l.stock) && l.serials.length && l.serials.length !== Number(l.qty || 0));
-  let body = `<p>Submit the count for <b>${esc(locName(S.cur.meta.loc))}</b>? You will not be able to change it afterward.</p>`;
+  let body = `<p>Submit <b>${esc(cname(S.cur.meta))}</b> for ${esc(locName(S.cur.meta.loc))}? You will not be able to change it afterward.</p>`;
   if (todo.length) body += `<div class="alert warn"><b>${todo.length}</b> item(s) have no quantity entered and will be left blank:<br><span class="small">${todo.slice(0, 12).map(l => esc(l.stock)).join(', ')}${todo.length > 12 ? ', ...' : ''}</span><br>Enter 0 for items you have none of.</div>`;
   if (mism.length) body += `<div class="alert warn"><b>${mism.length}</b> serialized item(s) have a different number of serial numbers than the quantity counted:<br><span class="small">${mism.slice(0, 8).map(l => `${esc(l.stock)} (${l.serials.length} serials / qty ${esc(l.qty)})`).join('<br>')}</span></div>`;
   if (!await confirmBox('Mark count as Submitted', body, 'Submit count')) return;
@@ -376,14 +379,14 @@ function renderAdmin() {
 function admCounts() {
   $('#admBody').innerHTML = `<div class="card"><div class="row"><label class="f" style="margin:0;flex:1;min-width:220px">Search counts<input id="aq" placeholder="Office name, Location ID, count date, file name..." value="${esc(S.aq)}"></label>
   <label class="f" style="margin:0">Status<select id="ast"><option value="">All</option>${['Open', 'Submitted', 'Approved'].map(s => `<option ${S.ast === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label></div>
-  <div class="tblwrap"><table><thead><tr><th>Office</th><th>Count date</th><th>Status</th><th>Progress</th><th>Submitted</th><th></th></tr></thead><tbody id="ctb"></tbody></table></div></div>`;
+  <div class="tblwrap"><table><thead><tr><th>Count / Office</th><th>Count date</th><th>Status</th><th>Progress</th><th>Submitted</th><th></th></tr></thead><tbody id="ctb"></tbody></table></div></div>`;
   const draw = () => {
     const w = S.aq.toLowerCase().split(/\s+/).filter(Boolean);
-    const rows = S.data.counts.filter(c => (!S.ast || c.status === S.ast) && w.every(x => (locName(c.loc) + ' ' + c.loc + ' ' + c.date + ' ' + c.file + ' ' + c.status).toLowerCase().includes(x)))
+    const rows = S.data.counts.filter(c => (!S.ast || c.status === S.ast) && w.every(x => ((c.name || '') + ' ' + locName(c.loc) + ' ' + c.loc + ' ' + c.date + ' ' + c.file + ' ' + c.status).toLowerCase().includes(x)))
       .sort((a, b) => (b.importedAt || '').localeCompare(a.importedAt || ''));
-    $('#ctb').innerHTML = rows.map(c => `<tr><td><b>${esc(locName(c.loc))}</b><div class="small muted">Loc ${esc(c.loc)} &middot; ${esc(c.file)}</div></td><td>${esc(c.date)}</td><td><span class="badge b-${c.status}">${c.status}</span></td>
+    $('#ctb').innerHTML = rows.map(c => `<tr><td><b>${esc(cname(c))}</b><div class="small">${esc(locName(c.loc))} <span class="muted">&middot; Loc ${esc(c.loc)} &middot; ${esc(c.file)}</span></div></td><td>${esc(c.date)}</td><td><span class="badge b-${c.status}">${c.status}</span></td>
       <td>${c.counted}/${c.total}</td><td class="small">${c.submittedBy ? esc(c.submittedBy) + '<br>' + esc(fmtTime(c.submittedAt)) : ''}${c.approvedBy ? '<br>Approved: ' + esc(c.approvedBy) : ''}</td>
-      <td style="white-space:nowrap"><button class="btn sm ghost" data-act="admView" data-id="${esc(c.id)}">View</button>
+      <td style="white-space:nowrap"><button class="btn sm ghost" data-act="admView" data-id="${esc(c.id)}">View</button> <button class="btn sm ghost" data-act="admRename" data-id="${esc(c.id)}">Rename</button>
       ${c.status === 'Submitted' ? `<button class="btn sm green" data-act="admApprove" data-id="${esc(c.id)}">Approve</button>` : ''}
       ${c.status !== 'Open' ? `<button class="btn sm" data-act="admExport" data-id="${esc(c.id)}">Export Excel</button> <button class="btn sm ghost" data-act="admReopen" data-id="${esc(c.id)}">Reopen</button>` : ''}
       <button class="btn sm danger" data-act="admDelete" data-id="${esc(c.id)}">Delete</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No counts found.</td></tr>';
@@ -400,6 +403,7 @@ function admImport() {
       prev = `<div class="card"><h3 style="margin-top:0">Ready to import</h3>
       <p><b>${I.parsed.items.length}</b> items &middot; Location ID <b>${esc(I.locId)}</b> &middot; Count date <b>${esc(I.date)}</b> &middot; File <span class="muted">${esc(I.fileName)}</span></p>
       ${I.parsed.warnings.map(w => `<div class="alert warn">${esc(w)}</div>`).join('')}
+      <label class="f">Count name (shown to staff)<input id="countName" maxlength="80" placeholder="e.g. Spring CPAP Count" value="${esc(I.name || '')}"></label>
       ${known ? `<div class="alert info">Office: <b>${esc(known.name)}</b> (matched from Location ID ${esc(I.locId)})</div>`
         : `<div class="alert warn">Location ID <b>${esc(I.locId)}</b> has not been used before. Please name this office:<label class="f" style="margin-top:8px">Office name<input id="newLoc" placeholder="e.g. Kamloops"></label></div>`}
       <div class="small muted" style="margin-bottom:10px">First items: ${I.parsed.items.slice(0, 5).map(i => esc(i.stock) + ' - ' + esc(cp1252(i.desc || ''))).join(' &nbsp;|&nbsp; ')}</div>
@@ -426,7 +430,7 @@ async function doImport() {
   if (!known && !nm) return toast('Please enter a name for this office.', true);
   const items = I.parsed.items.map(i => { const desc = cp1252(i.desc || ''); return { stock: i.stock, desc, uom: i.uom || '', section: i.section, seq: i.seq, serialized: SER_GUESS.test(desc) }; });
   try {
-    await adm('importCount', { locationId: I.locId, locationName: known ? '' : nm, countDate: I.date, fileName: I.fileName, items, fileB64: btoa(I.txt), by: S.user || 'Admin' });
+    await adm('importCount', { locationId: I.locId, locationName: known ? '' : nm, name: ($('#countName').value || '').trim(), countDate: I.date, fileName: I.fileName, items, fileB64: btoa(I.txt), by: S.user || 'Admin' });
     S.imp = null; await reload(); S.tab = 'counts'; renderAdmin(); toast('Count imported.');
   } catch (e) { toast(e.message, true); }
 }
@@ -502,10 +506,10 @@ async function exportXlsx(id) {
   const c = S.data.counts.find(x => x.id === id);
   try {
     const r = await api('count', { id });
-    const rows = [['Location ID', 'Office', 'Count date', 'Line', 'Section', 'Stock number', 'Description', 'Unit', 'Qty counted', 'Serial numbers', 'Counted by']];
-    r.lines.forEach((l, k) => rows.push([c.loc, locName(c.loc), c.date, k + 1, l.section + ' ' + l.seq, l.stock, l.desc, l.uom, l.qty === '' ? '' : Number(l.qty), l.serials.join('; '), c.submittedBy]));
-    const name = `count-${locName(c.loc).replace(/[^\w-]+/g, '_')}-loc${c.loc}-${c.date.replace(/\//g, '-')}.xlsx`;
-    download(name, buildXlsx('Count', rows, [11, 18, 12, 6, 10, 20, 42, 7, 12, 40, 18]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Exported ' + name);
+    const rows = [['Count name', 'Location ID', 'Office', 'Count date', 'Line', 'Section', 'Stock number', 'Description', 'Unit', 'Qty counted', 'Serial numbers', 'Counted by']];
+    r.lines.forEach((l, k) => rows.push([c.name || '', c.loc, locName(c.loc), c.date, k + 1, l.section + ' ' + l.seq, l.stock, l.desc, l.uom, l.qty === '' ? '' : Number(l.qty), l.serials.join('; '), c.submittedBy]));
+    const name = `${(c.name || 'count').replace(/[^\w-]+/g, '_')}-${locName(c.loc).replace(/[^\w-]+/g, '_')}-loc${c.loc}-${c.date.replace(/\//g, '-')}.xlsx`;
+    download(name, buildXlsx('Count', rows, [24, 11, 18, 12, 6, 10, 20, 42, 7, 12, 40, 18]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Exported ' + name);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -532,6 +536,7 @@ document.addEventListener('click', async e => {
       case 'demoReset': if (await confirmBox('Reset demo data', 'Delete all demo data stored in this browser?', 'Reset')) { Demo.reset(); S.pin = ''; SS.removeItem('invc_pin'); await reload(); S.view = 'home'; render(); } break;
       case 'admTab': S.tab = t.dataset.v; renderAdmin(); if (S.tab === 'serial') loadAllDescriptions().then(() => { if (S.tab === 'serial' && S.view === 'admin') admSerial(); }); break;
       case 'admView': openCount(id, true); break;
+      case 'admRename': { const c = S.data.counts.find(x => x.id === id), n = prompt('Count name', c.name || ''); if (n === null) break; await adm('renameCount', { id, name: n.trim() }); await reload(); admCounts(); toast('Renamed.'); break; }
       case 'admApprove': if (await confirmBox('Approve count', 'Approve this count? It can then be exported.', 'Approve')) { await adm('setStatus', { id, status: 'Approved', by: S.user || 'Admin' }); await reload(); admCounts(); toast('Approved.'); } break;
       case 'admReopen': if (await confirmBox('Reopen count', 'Return this count to staff so it can be edited again?', 'Reopen')) { await adm('setStatus', { id, status: 'Open' }); await reload(); admCounts(); toast('Count reopened.'); } break;
       case 'admDelete': if (await confirmBox('Delete count', '<b>Permanently delete</b> this count, including quantities and serial numbers? This cannot be undone.', 'Delete')) { await adm('deleteCount', { id }); await reload(); admCounts(); toast('Deleted.'); } break;
@@ -559,8 +564,14 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); const all = [...document.querySelectorAll('[data-qty]')], k = all.indexOf(t); if (all[k + 1]) { all[k + 1].focus(); all[k + 1].select(); }
   }
 });
-document.addEventListener('change', e => {
+document.addEventListener('change', async e => {
   const t = e.target;
+  if (t.dataset && t.dataset.enser !== undefined && S.cur) {
+    const i = +t.dataset.enser, l = S.cur.lines[i];
+    try { await api('enableSerialized', { stock: l.stock, desc: l.desc }); S.data.items[l.stock] = 'Y'; S.openSer.add(i); refreshRow(i, true); renderChips(); toast('Serial numbers enabled for ' + l.stock + ' on all counts.'); }
+    catch (err) { t.checked = false; toast(err.message, true); }
+    return;
+  }
   if (t.dataset && t.dataset.ser !== undefined) {
     adm('setSerialized', { items: [{ stock: t.dataset.ser, serialized: t.checked }] }).then(() => { S.data.items[t.dataset.ser] = t.checked ? 'Y' : 'N'; const c = $('#scnt'); if (c) c.textContent = `${Object.keys(S.data.items).filter(isSer).length} serialized of ${Object.keys(S.data.items).length}`; })
       .catch(err => { toast(err.message, true); t.checked = !t.checked; });
