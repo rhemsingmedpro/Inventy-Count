@@ -263,6 +263,7 @@ function renderHome() {
   ${list.length ? `<div class="cgrid">${list.map(c => `<div class="ccard" data-act="openCount" data-id="${esc(c.id)}"><div class="nm">${esc(cname(c))}</div>
     <div class="small"><b>${esc(locName(c.loc))}</b> <span class="muted">&middot; Location ${esc(c.loc)} &middot; Count date ${esc(c.date)}</span></div>
     <div style="margin-top:6px"><span class="badge b-${c.status}">${c.status}</span> <span class="small">${c.counted} of ${c.total} counted</span></div>
+    <div class="small" style="margin-top:8px">Blank count sheet: <button class="btn sm ghost" data-act="printSheet" data-id="${esc(c.id)}">Print / PDF</button> <button class="btn sm ghost" data-act="blankXlsx" data-id="${esc(c.id)}">Excel</button></div>
     <div class="bar"><i style="width:${c.total ? Math.round(c.counted / c.total * 100) : 0}%"></i></div></div>`).join('')}</div>`
     : '<div class="alert info">No open counts for this selection. An Admin can import a new count sheet.</div>'}`;
   $('#offSel').onchange = e => { S.office = e.target.value; renderHome(); };
@@ -287,6 +288,7 @@ function renderCount() {
     <div class="row" style="margin-bottom:6px"><button class="btn ghost sm" data-act="backCount">&larr; Back</button>
     <div style="flex:1;min-width:180px"><b style="color:var(--navy)">${esc(cname(c))}</b> <span class="small muted">${esc(locName(c.loc))} (Loc ${esc(c.loc)}) &middot; ${esc(c.date)}</span> <span class="badge b-${c.status}">${c.status}</span>
     <div class="small"><span id="prog"></span> <span class="savestate" id="savest"></span></div></div>
+    <button class="btn sm ghost" data-act="printSheet" data-id="${esc(c.id)}" title="Blank count sheet to print and count on">Print blank sheet</button>
     ${S.cur.readOnly ? '' : '<button class="btn green" data-act="submitCount">Mark as Submitted</button>'}</div>
     <input id="q" type="search" placeholder="Search stock number, description or serial number..." autocomplete="off" value="${esc(S.q)}">
     <div class="chips" id="chips"></div></div></div>
@@ -482,10 +484,10 @@ function zipStore(files) { // files: [{name, data(string)}]
   const all = [...parts, ...central, end], out = new Uint8Array(all.reduce((n, a) => n + a.length, 0)); let p = 0;
   all.forEach(a => { out.set(a, p); p += a.length; }); return out;
 }
-function buildXlsx(sheetName, rows, widths) { // rows: array of arrays; numbers become numeric cells, everything else text
+function buildXlsx(sheetName, rows, widths, opts = {}) { // rows: array of arrays; numbers become numeric cells, everything else text
   const X = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const col = i => { let s = ''; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s; };
-  const sheetRows = rows.map((r, ri) => `<row r="${ri + 1}">` + r.map((v, ci) => {
+  const sheetRows = rows.map((r, ri) => `<row r="${ri + 1}"${ri > 0 && opts.rowHt ? ` ht="${opts.rowHt}" customHeight="1"` : ""}>` + r.map((v, ci) => {
     const ref = col(ci) + (ri + 1), st = ri === 0 ? ' s="1"' : '';
     if (v === '' || v == null) return '';
     if (typeof v === 'number') return `<c r="${ref}"${st}><v>${v}</v></c>`;
@@ -496,10 +498,10 @@ function buildXlsx(sheetName, rows, widths) { // rows: array of arrays; numbers 
   return zipStore([
     { name: '[Content_Types].xml', data: H + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
     { name: '_rels/.rels', data: H + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${RS}/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
-    { name: 'xl/workbook.xml', data: H + `<workbook xmlns="${NS}" xmlns:r="${RS}"><sheets><sheet name="${X(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: 'xl/workbook.xml', data: H + `<workbook xmlns="${NS}" xmlns:r="${RS}"><sheets><sheet name="${X(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">${X(sheetName).slice(0, 31)}!$1:$1</definedName></definedNames></workbook>` },
     { name: 'xl/_rels/workbook.xml.rels', data: H + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${RS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RS}/styles" Target="styles.xml"/></Relationships>` },
     { name: 'xl/styles.xml', data: H + `<styleSheet xmlns="${NS}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>` },
-    { name: 'xl/worksheets/sheet1.xml', data: H + `<worksheet xmlns="${NS}"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${sheetRows}</sheetData></worksheet>` }
+    { name: 'xl/worksheets/sheet1.xml', data: H + `<worksheet xmlns="${NS}"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${sheetRows}</sheetData><printOptions gridLines="1"/><pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup orientation="portrait" fitToWidth="1" fitToHeight="0"/></worksheet>` }
   ]);
 }
 async function exportXlsx(id) {
@@ -510,6 +512,45 @@ async function exportXlsx(id) {
     r.lines.forEach((l, k) => rows.push([c.name || '', c.loc, locName(c.loc), c.date, k + 1, l.section + ' ' + l.seq, l.stock, l.desc, l.uom, l.qty === '' ? '' : Number(l.qty), l.serials.join('; '), c.submittedBy]));
     const name = `${(c.name || 'count').replace(/[^\w-]+/g, '_')}-${locName(c.loc).replace(/[^\w-]+/g, '_')}-loc${c.loc}-${c.date.replace(/\//g, '-')}.xlsx`;
     download(name, buildXlsx('Count', rows, [24, 11, 18, 12, 6, 10, 20, 42, 7, 12, 40, 18]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Exported ' + name);
+  } catch (e) { toast(e.message, true); }
+}
+
+// ======================= blank count sheet (print / Excel) =======================
+async function sheetLines(id) { return S.cur && S.cur.meta.id === id ? S.cur.lines : (await api('count', { id })).lines; }
+function sheetHtml(c, lines) {
+  const rows = lines.map((l, k) => { const ser = isSer(l.stock); return `<tr class="${ser ? 'ser' : ''}"><td class="n">${k + 1}</td><td class="sn">${esc(l.stock)}</td><td>${esc(l.desc)}<div class="m">${esc(l.uom)} &middot; Sec ${esc(l.section)}/${esc(l.seq)}</div></td><td class="q"></td><td class="s">${ser ? '<span>Serial #s:</span>' : ''}</td></tr>`; }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(cname(c))} - count sheet</title><style>
+@page{size:letter portrait;margin:12mm}*{box-sizing:border-box}
+body{font-family:Arial,Helvetica,sans-serif;font-size:10.5pt;color:#000;margin:0}
+.hd{display:flex;align-items:center;gap:12px;border-bottom:2px solid #003D79;padding-bottom:6px;margin-bottom:8px}.hd img{height:34px}
+.hd h1{font-size:15pt;margin:0;color:#003D79}.hd .sub{font-size:10pt}
+.who{display:flex;gap:24px;margin:6px 0 10px;font-size:10.5pt}.who span{flex:1;border-bottom:1px solid #000;padding-bottom:2px}
+table{border-collapse:collapse;width:100%}thead{display:table-header-group}
+th{background:#e9eef4;border:1px solid #444;font-size:9pt;text-align:left;padding:4px 5px}
+td{border:1px solid #444;padding:4px 5px;vertical-align:top;height:10mm}tr{page-break-inside:avoid}
+td.n{width:8mm;text-align:right;color:#555;font-size:9pt}td.sn{width:34mm;font-weight:bold;font-size:10pt}td.q{width:24mm}
+td.s{width:62mm;font-size:8pt;color:#888}tr.ser td{height:24mm}.m{font-size:8pt;color:#555}
+</style></head><body>
+<div class="hd"><img src="MedPro-logo.png" alt=""><div><h1>${esc(cname(c))}</h1><div class="sub"><b>${esc(locName(c.loc))}</b> (Location ${esc(c.loc)}) &middot; Count date ${esc(c.date)} &middot; ${lines.length} items</div></div></div>
+<div class="who"><span>Counted by:</span><span>Date counted:</span></div>
+<table><thead><tr><th>#</th><th>Stock number</th><th>Description</th><th>Qty on hand</th><th>Serial numbers (if any) / notes</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+}
+function printHtml(html) {
+  const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  document.body.appendChild(f); const d = f.contentWindow.document; d.open(); d.write(html); d.close();
+  setTimeout(() => { f.contentWindow.focus(); f.contentWindow.print(); setTimeout(() => f.remove(), 120000); }, 600);
+}
+async function printSheet(id) {
+  try { const c = S.data.counts.find(x => x.id === id); printHtml(sheetHtml(c, await sheetLines(id))); toast('Choose "Save as PDF" in the print window to save a PDF.'); }
+  catch (e) { toast(e.message, true); }
+}
+async function blankXlsx(id) {
+  try {
+    const c = S.data.counts.find(x => x.id === id), lines = await sheetLines(id);
+    const rows = [['#', 'Stock number', 'Description', 'Unit', 'Section', 'Qty on hand', 'Serial numbers (if any) / notes']];
+    lines.forEach((l, k) => rows.push([k + 1, l.stock, l.desc, l.uom, l.section + ' ' + l.seq, '', isSer(l.stock) ? '(serialized item)' : '']));
+    const name = `${(c.name || 'count').replace(/[^\w-]+/g, '_')}-${locName(c.loc).replace(/[^\w-]+/g, '_')}-BLANK-count-sheet.xlsx`;
+    download(name, buildXlsx('Count', rows, [5, 20, 42, 7, 10, 14, 40], { rowHt: 26 }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Exported ' + name);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -541,6 +582,8 @@ document.addEventListener('click', async e => {
       case 'admReopen': if (await confirmBox('Reopen count', 'Return this count to staff so it can be edited again?', 'Reopen')) { await adm('setStatus', { id, status: 'Open' }); await reload(); admCounts(); toast('Count reopened.'); } break;
       case 'admDelete': if (await confirmBox('Delete count', '<b>Permanently delete</b> this count, including quantities and serial numbers? This cannot be undone.', 'Delete')) { await adm('deleteCount', { id }); await reload(); admCounts(); toast('Deleted.'); } break;
       case 'admExport': exportXlsx(id); break;
+      case 'printSheet': printSheet(id); break;
+      case 'blankXlsx': blankXlsx(id); break;
       case 'doImport': doImport(); break;
       case 'cancelImport': S.imp = null; admImport(); break;
       case 'saveLoc': { const inp = document.querySelector(`[data-loc="${CSS.escape(id)}"]`); if (!inp.value.trim()) return toast('Name required.', true); await adm('saveLocation', { locationId: id, name: inp.value.trim() }); await reload(); toast('Saved.'); break; }
