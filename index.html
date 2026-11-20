@@ -228,7 +228,7 @@ const Demo = {
 
 // ======================= state =======================
 const S = { user: LS.getItem('invc_user') || '', pin: SS.getItem('invc_pin') || '', data: null, view: 'home', tab: 'counts',
-  cur: null, q: '', filter: 'all', openSer: new Set(), pending: new Map(), saveMsg: '', saveErr: false, office: '', showDone: false, imp: null, aq: '', ast: '', sq: '' };
+  cur: null, q: '', filter: 'all', openSer: new Set(), pending: new Map(), saveMsg: '', saveErr: false, office: '', showDone: false, showSubs: false, imp: null, aq: '', ast: '', sq: '' };
 const isAdmin = () => !!S.pin;
 const locName = id => { const l = S.data.locations.find(x => x.id === String(id)); return l ? l.name : 'Location ' + id; };
 const isSer = stock => S.data.items[stock] === 'Y';
@@ -266,11 +266,14 @@ function loginHtml() {
 // ======================= staff: home =======================
 function renderHome() {
   const D = S.data, offices = D.locations.filter(l => D.counts.some(c => c.loc === l.id));
-  let list = D.counts.filter(c => (!S.office || c.loc === S.office) && (S.showDone || c.status === 'Open'));
-  list.sort((a, b) => locName(a.loc).localeCompare(locName(b.loc)) || (b.importedAt || '').localeCompare(a.importedAt || ''));
+  const hiddenSubs = D.counts.filter(c => c.parent && (!S.office || c.loc === S.office) && (S.showDone || c.status === 'Open')).length;
+  let list = D.counts.filter(c => (!S.office || c.loc === S.office) && (S.showDone || c.status === 'Open') && (S.showSubs || !c.parent));
+  const root = c => D.counts.find(x => x.id === c.parent) || c;   // keep each main count followed by its sub counts
+  list.sort((a, b) => locName(a.loc).localeCompare(locName(b.loc)) || (root(b).importedAt || '').localeCompare(root(a).importedAt || '') || root(a).id.localeCompare(root(b).id) || (a.parent ? 1 : 0) - (b.parent ? 1 : 0) || (a.importedAt || '').localeCompare(b.importedAt || ''));
   $('#app').innerHTML = `<h2>Select the count to complete</h2>
   <div class="row"><label class="f" style="margin:0">Office<select id="offSel"><option value="">All offices</option>${offices.map(o => `<option value="${esc(o.id)}" ${S.office === o.id ? 'selected' : ''}>${esc(o.name)} (${esc(o.id)})</option>`).join('')}</select></label>
-  <label style="font-size:14px"><input type="checkbox" id="showDone" ${S.showDone ? 'checked' : ''}> Show submitted / approved counts</label></div>
+  <label style="font-size:14px"><input type="checkbox" id="showDone" ${S.showDone ? 'checked' : ''}> Show submitted / approved counts</label>
+  ${D.counts.some(c => c.parent) ? `<label style="font-size:14px"><input type="checkbox" id="showSubs" ${S.showSubs ? 'checked' : ''}> Show sub counts${S.showSubs || !hiddenSubs ? '' : ` (${hiddenSubs} hidden)`}</label>` : ''}</div>
   ${list.length ? `<div class="cgrid">${list.map(c => `<div class="ccard" data-act="openCount" data-id="${esc(c.id)}"><div class="nm">${esc(cname(c))}</div>
     <div class="small"><b>${esc(locName(c.loc))}</b> <span class="muted">&middot; Location ${esc(c.loc)} &middot; Count date ${esc(c.date)}</span></div>${c.parent ? '<div class="small"><span class="badge b-ser">Sub count</span></div>' : ''}
     <div style="margin-top:6px"><span class="badge b-${c.status}">${c.status}</span> <span class="small">${c.counted} of ${c.total} counted</span></div>
@@ -279,6 +282,7 @@ function renderHome() {
     : '<div class="alert info">No open counts for this selection. An Admin can import a new count sheet.</div>'}`;
   $('#offSel').onchange = e => { S.office = e.target.value; renderHome(); };
   $('#showDone').onchange = e => { S.showDone = e.target.checked; renderHome(); };
+  const ss = $('#showSubs'); if (ss) ss.onchange = e => { S.showSubs = e.target.checked; renderHome(); };
 }
 
 // ======================= staff: count screen =======================
