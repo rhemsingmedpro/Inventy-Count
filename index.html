@@ -228,7 +228,7 @@ const Demo = {
 
 // ======================= state =======================
 const S = { user: LS.getItem('invc_user') || '', pin: SS.getItem('invc_pin') || '', data: null, view: 'home', tab: 'counts',
-  cur: null, q: '', filter: 'all', openSer: new Set(), pending: new Map(), saveMsg: '', saveErr: false, office: '', showDone: false, showSubs: false, imp: null, aq: '', ast: '', sq: '' };
+  cur: null, q: '', filter: 'all', openSer: new Set(), pending: new Map(), saveMsg: '', saveErr: false, office: '', showDone: false, imp: null, aq: '', ast: '', sq: '' };
 const isAdmin = () => !!S.pin;
 const locName = id => { const l = S.data.locations.find(x => x.id === String(id)); return l ? l.name : 'Location ' + id; };
 const isSer = stock => S.data.items[stock] === 'Y';
@@ -266,23 +266,29 @@ function loginHtml() {
 // ======================= staff: home =======================
 function renderHome() {
   const D = S.data, offices = D.locations.filter(l => D.counts.some(c => c.loc === l.id));
-  const hiddenSubs = D.counts.filter(c => c.parent && (!S.office || c.loc === S.office) && (S.showDone || c.status === 'Open')).length;
-  let list = D.counts.filter(c => (!S.office || c.loc === S.office) && (S.showDone || c.status === 'Open') && (S.showSubs || !c.parent));
-  const root = c => D.counts.find(x => x.id === c.parent) || c;   // keep each main count followed by its sub counts
-  list.sort((a, b) => locName(a.loc).localeCompare(locName(b.loc)) || (root(b).importedAt || '').localeCompare(root(a).importedAt || '') || root(a).id.localeCompare(root(b).id) || (a.parent ? 1 : 0) - (b.parent ? 1 : 0) || (a.importedAt || '').localeCompare(b.importedAt || ''));
+  // Only main counts get a card; clicking one that has sub counts asks which to open.
+  const ids = new Set(D.counts.map(c => c.id)), vis = c => (!S.office || c.loc === S.office) && (S.showDone || c.status === 'Open');
+  let list = D.counts.filter(c => (!c.parent || !ids.has(c.parent)) && (vis(c) || subsOf(c.id).some(vis)));
+  list.sort((a, b) => locName(a.loc).localeCompare(locName(b.loc)) || (b.importedAt || '').localeCompare(a.importedAt || ''));
   $('#app').innerHTML = `<h2>Select the count to complete</h2>
   <div class="row"><label class="f" style="margin:0">Office<select id="offSel"><option value="">All offices</option>${offices.map(o => `<option value="${esc(o.id)}" ${S.office === o.id ? 'selected' : ''}>${esc(o.name)} (${esc(o.id)})</option>`).join('')}</select></label>
-  <label style="font-size:14px"><input type="checkbox" id="showDone" ${S.showDone ? 'checked' : ''}> Show submitted / approved counts</label>
-  ${D.counts.some(c => c.parent) ? `<label style="font-size:14px"><input type="checkbox" id="showSubs" ${S.showSubs ? 'checked' : ''}> Show sub counts${S.showSubs || !hiddenSubs ? '' : ` (${hiddenSubs} hidden)`}</label>` : ''}</div>
+  <label style="font-size:14px"><input type="checkbox" id="showDone" ${S.showDone ? 'checked' : ''}> Show submitted / approved counts</label></div>
   ${list.length ? `<div class="cgrid">${list.map(c => `<div class="ccard" data-act="openCount" data-id="${esc(c.id)}"><div class="nm">${esc(cname(c))}</div>
-    <div class="small"><b>${esc(locName(c.loc))}</b> <span class="muted">&middot; Location ${esc(c.loc)} &middot; Count date ${esc(c.date)}</span></div>${c.parent ? '<div class="small"><span class="badge b-ser">Sub count</span></div>' : ''}
+    <div class="small"><b>${esc(locName(c.loc))}</b> <span class="muted">&middot; Location ${esc(c.loc)} &middot; Count date ${esc(c.date)}</span></div>${subsOf(c.id).length ? `<div class="small" style="margin-top:4px"><span class="badge b-ser">${subsOf(c.id).length} sub count${subsOf(c.id).length > 1 ? 's' : ''}</span> <span class="muted">tap to choose which to open</span></div>` : ''}
     <div style="margin-top:6px"><span class="badge b-${c.status}">${c.status}</span> <span class="small">${c.counted} of ${c.total} counted</span></div>
     <div class="small" style="margin-top:8px">Blank count sheet: <button class="btn sm ghost" data-act="printSheet" data-id="${esc(c.id)}">Print / PDF</button> <button class="btn sm ghost" data-act="blankXlsx" data-id="${esc(c.id)}">Excel</button></div>
     <div class="bar"><i style="width:${c.total ? Math.round(c.counted / c.total * 100) : 0}%"></i></div></div>`).join('')}</div>`
     : '<div class="alert info">No open counts for this selection. An Admin can import a new count sheet.</div>'}`;
   $('#offSel').onchange = e => { S.office = e.target.value; renderHome(); };
   $('#showDone').onchange = e => { S.showDone = e.target.checked; renderHome(); };
-  const ss = $('#showSubs'); if (ss) ss.onchange = e => { S.showSubs = e.target.checked; renderHome(); };
+}
+function chooseCount(id) {
+  const main = S.data.counts.find(c => c.id === id), fam = [main, ...subsOf(id)];
+  modal(`<h2>Which count do you want to open?</h2><div class="small muted" style="margin-bottom:10px">${esc(locName(main.loc))} &middot; Count date ${esc(main.date)}</div>
+  ${fam.map(c => `<div class="ccard" style="margin-bottom:8px;border-left-color:${c.parent ? '#7E57C2' : 'var(--navy)'}" data-act="pickCount" data-id="${esc(c.id)}"><div class="nm">${esc(cname(c))}</div>
+    <div style="margin-top:4px"><span class="badge b-${c.status}">${c.status}</span> <span class="small">${c.counted} of ${c.total} counted</span>${c.parent ? ' <span class="badge b-ser">Sub count</span>' : ''}</div>
+    <div class="bar"><i style="width:${c.total ? Math.round(c.counted / c.total * 100) : 0}%"></i></div></div>`).join('')}
+  <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button></div>`);
 }
 
 // ======================= staff: count screen =======================
@@ -638,7 +644,8 @@ document.addEventListener('click', async e => {
       case 'login': { const n = $('#lgName').value; if (!n) return toast('Select your name.', true); S.user = n; LS.setItem('invc_user', n); render(); break; }
       case 'switchUser': S.user = ''; LS.removeItem('invc_user'); S.view = 'home'; render(); break;
       case 'nav': if (S.pending.size) await flush(); S.view = t.dataset.v; if (S.view === 'admin') { await reload(); } else await reload(); render(); break;
-      case 'openCount': openCount(id); break;
+      case 'openCount': subsOf(id).length ? chooseCount(id) : openCount(id); break;
+      case 'pickCount': closeModal(); openCount(id); break;
       case 'backCount': await flush(); await reload(); S.view = S.cur.fromAdmin ? 'admin' : 'home'; render(); break;
       case 'chip': S.filter = t.dataset.k; renderChips(); renderList(); break;
       case 'ser': { const i = +t.dataset.i; S.openSer.has(i) ? S.openSer.delete(i) : S.openSer.add(i); refreshRow(i, true); break; }
