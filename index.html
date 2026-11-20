@@ -68,6 +68,8 @@ td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;z-index:400;max-width:92vw}
 #scanov{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;display:flex;align-items:center;justify-content:center;padding:8px}
 .scanbox{background:#fff;border-radius:12px;padding:12px;width:100%;max-width:520px;max-height:100%;overflow:auto}
+#scanflash{display:none;margin-top:8px;padding:14px;border-radius:8px;font-weight:700;font-size:17px;text-align:center;word-break:break-all}
+#scanflash.ok{background:#2f7a29;color:#fff}#scanflash.dup{background:#B45309;color:#fff}
 #scanvid{width:100%;min-height:180px;background:#000;border-radius:8px;overflow:hidden}
 .scanbox .foot{display:flex;justify-content:flex-end;margin-top:10px}
 .toast.err{background:var(--bad)}
@@ -377,9 +379,9 @@ window.addEventListener('beforeunload', e => { if (S.pending.size) { e.preventDe
 function addSerials(i, raw, scanned) {
   const l = S.cur.lines[i], parts = scanned ? [raw.trim()].filter(Boolean) : raw.split(/[\n\r,;\t]+/).map(s => s.trim()).filter(Boolean); let added = 0;
   parts.forEach(s => {
-    if (l.serials.includes(s)) return toast(`${s} is already recorded for this item.`, true);
+    if (l.serials.includes(s)) return scanned || toast(`${s} is already recorded for this item.`, true);
     const dup = S.cur.lines.find(x => x.idx !== i && x.serials.includes(s));
-    if (dup) return toast(`${s} is already recorded on ${dup.stock}.`, true);
+    if (dup) return scanned || toast(`${s} is already recorded on ${dup.stock}.`, true);
     l.serials.push(s); added++;
   });
   if (added && (l.qty === '' || Number(l.qty) < l.serials.length)) l.qty = String(l.serials.length);
@@ -398,20 +400,31 @@ function loadScanLib() {
     s.onload = res; s.onerror = () => rej(new Error('Could not load the scanner. Check your connection, or type the serial number instead.')); document.head.appendChild(s);
   });
 }
-function beep() { try { const a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value = 880; g.gain.value = .08; o.start(); setTimeout(() => { o.stop(); a.close(); }, 120); } catch (e) {} }
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// Sound must be unlocked by a tap, so the audio context is created when Scan is tapped (iPhones stay silent otherwise).
+function unlockAudio() { try { if (!S.audio) S.audio = new (window.AudioContext || window.webkitAudioContext)(); if (S.audio.state === 'suspended') S.audio.resume(); } catch (e) {} }
+function beep(ok = true) {
+  try { const a = S.audio; if (!a) return; const o = a.createOscillator(), g = a.createGain(); o.connect(g); g.connect(a.destination); o.type = 'sine'; o.frequency.value = ok ? 1000 : 300; g.gain.value = .25; o.start(); setTimeout(() => o.stop(), ok ? 140 : 300); } catch (e) {}
+}
+function flash(msg, ok) {
+  const f = $('#scanflash'); if (!f) return; f.textContent = msg; f.className = ok ? 'ok' : 'dup'; f.style.display = 'block';
+  clearTimeout(f._t); f._t = setTimeout(() => { f.style.display = 'none'; }, 2500);
+}
 function drawScanList() {
   const el = $('#scanlist'); if (!el) return; const l = S.cur.lines[S.scanIdx];
   el.innerHTML = `<div class="small" style="margin:8px 0 4px"><b>${l.serials.length}</b> serial number(s) recorded for this item${l.serials.length ? ':' : ''}</div>` + l.serials.map((s, k) => `<span class="sc">${esc(s)}<a data-act="scandel" data-k="${k}" title="Remove">&times;</a></span>`).join('');
 }
 async function openScan(i) {
+  unlockAudio();
   try { await loadScanLib(); } catch (e) { return toast(e.message, true); }
   const l = S.cur.lines[i]; S.scanIdx = i; scanLast = { t: '', at: 0 };
   const ov = document.createElement('div'); ov.id = 'scanov';
   ov.innerHTML = `<div class="scanbox"><b style="color:var(--navy)">Scan serial number</b><div class="small">${esc(l.stock)} &middot; ${esc(l.desc)}</div>
+    <div id="scanflash"></div>
     <div id="scanvid" style="margin-top:8px"></div><div id="scanmsg" class="small" style="margin-top:6px">Starting camera...</div><div id="scanlist"></div>
     <div class="small muted" style="margin-top:6px">Barcode not reading? Tap <b>Take photo</b>: the phone's own camera focuses better than live video.</div>
     <input id="scanPhotoIn" type="file" accept="image/*" capture="environment" hidden>
-    <div class="foot" style="justify-content:space-between"><button class="btn ghost" data-act="scanPhoto">&#128247; Take photo</button><button class="btn green" data-act="scanDone">Done</button></div></div>`;
+    <div class="foot" style="justify-content:space-between"><button class="btn ${IOS ? '' : 'ghost'}" data-act="scanPhoto">&#128247; Take photo</button><button class="btn green" data-act="scanDone">Done</button></div></div>`;
   document.body.appendChild(ov); drawScanList();
   $('#scanPhotoIn').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) photoScan(f); };
   try { await startLive(); }
@@ -421,8 +434,10 @@ const SCAN_FORMATS = () => { const F = Html5QrcodeSupportedFormats; return [F.CO
 async function startLive() {
   scanner = new Html5Qrcode('scanvid', { formatsToSupport: SCAN_FORMATS(), useBarCodeDetectorIfSupported: true, verbose: false });
   // full frame at high resolution: 1D barcodes need far more pixels than the 640x480 default
-  await scanner.start({ facingMode: 'environment' }, { fps: 10, videoConstraints: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }, onScan, () => {});
-  const m = $('#scanmsg'); if (m) m.textContent = 'Hold the barcode in view, about 15-25 cm away, steady and well lit. Each scan is added automatically; tap Done when finished.';
+  // wide scan box (cheaper + less noise than the whole frame), no mirrored re-try (halves the work per frame)
+  await scanner.start({ facingMode: 'environment' }, { fps: 12, disableFlip: true, qrbox: (w, h) => ({ width: Math.floor(w * 0.92), height: Math.floor(Math.min(h * 0.6, 260)) }), videoConstraints: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }, onScan, () => {});
+  const m = $('#scanmsg'); if (m) m.textContent = 'Hold the barcode inside the box, 15-25 cm away, steady and well lit. Each scan is added automatically; tap Done when finished.';
+  setTimeout(() => { const v = document.querySelector('#scanvid video'), mm = $('#scanmsg'); if (v && mm && v.videoWidth) mm.textContent += ` (camera ${v.videoWidth}x${v.videoHeight})`; }, 1500);
 }
 // Downscale a camera photo (keeps decoding fast and under iPhone canvas limits).
 async function shrinkImage(file, max) {
@@ -445,8 +460,9 @@ async function photoScan(file) {
 function onScan(text) {
   text = String(text || '').trim(); const now = Date.now(), same = text === scanLast.t && now - scanLast.at < 1500;
   scanLast = { t: text, at: now }; if (!text || same) return;      // ignore the same barcode while it stays in view
-  const l = S.cur.lines[S.scanIdx], added = addSerials(S.scanIdx, text, true);
-  if (added) { if (navigator.vibrate) navigator.vibrate(80); beep(); const m = $('#scanmsg'); if (m) m.textContent = 'Added ' + text; }
+  const added = addSerials(S.scanIdx, text, true);
+  if (added) { if (navigator.vibrate) navigator.vibrate(120); beep(true); flash('✓ Added ' + text, true); }
+  else { beep(false); flash('Already recorded: ' + text, false); }
   drawScanList();
 }
 function closeScan() {
