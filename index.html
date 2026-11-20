@@ -65,7 +65,11 @@ td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:12px}
 .modal{background:#fff;border-radius:12px;padding:18px;max-width:560px;width:100%;max-height:90vh;overflow:auto}
 .modal .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
-.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;z-index:200;max-width:92vw}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;z-index:400;max-width:92vw}
+#scanov{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;display:flex;align-items:center;justify-content:center;padding:8px}
+.scanbox{background:#fff;border-radius:12px;padding:12px;width:100%;max-width:520px;max-height:100%;overflow:auto}
+#scanvid{width:100%;min-height:180px;background:#000;border-radius:8px;overflow:hidden}
+.scanbox .foot{display:flex;justify-content:flex-end;margin-top:10px}
 .toast.err{background:var(--bad)}
 .drop{border:2px dashed #9fb3c8;border-radius:10px;padding:26px;text-align:center;background:#fafcfe}
 .drop.over{background:var(--info-bg);border-color:var(--navy)}
@@ -350,7 +354,7 @@ function itemHtml(l) {
 function serPanel(l, ro) {
   const q = l.qty === '' ? 0 : Number(l.qty);
   return `<div class="serpanel"><div>${l.serials.length ? l.serials.map((s, k) => `<span class="sc">${esc(s)}${ro ? '' : `<a data-act="serdel" data-i="${l.idx}" data-k="${k}" title="Remove">&times;</a>`}</span>`).join('') : '<span class="small muted">No serial numbers recorded.</span>'}</div>
-    ${ro ? '' : `<div class="row" style="margin:6px 0 0"><input class="serin" data-i="${l.idx}" placeholder="Scan or type serial number, press Enter" autocomplete="off"><button class="btn sm green" data-act="seradd" data-i="${l.idx}">Add</button></div>`}
+    ${ro ? '' : `<div class="row" style="margin:6px 0 0"><input class="serin" data-i="${l.idx}" placeholder="Scan or type serial number, press Enter" autocomplete="off"><button class="btn sm green" data-act="seradd" data-i="${l.idx}">Add</button>${CAM ? `<button class="btn sm" data-act="scan" data-i="${l.idx}">&#128247; Scan</button>` : ''}</div>`}
     <div class="small ${l.serials.length !== q ? '' : 'muted'}" style="margin-top:4px;${l.serials.length !== q ? 'color:var(--warn)' : ''}">${l.serials.length} serial number(s) recorded &middot; quantity counted: ${l.qty === '' ? 'not entered' : q}</div></div>`;
 }
 function refreshRow(i, focusSer) {
@@ -370,8 +374,8 @@ async function flush() {
 }
 window.addEventListener('beforeunload', e => { if (S.pending.size) { e.preventDefault(); e.returnValue = ''; } });
 
-function addSerials(i, raw) {
-  const l = S.cur.lines[i], parts = raw.split(/[\n\r,;\t]+/).map(s => s.trim()).filter(Boolean); let added = 0;
+function addSerials(i, raw, scanned) {
+  const l = S.cur.lines[i], parts = scanned ? [raw.trim()].filter(Boolean) : raw.split(/[\n\r,;\t]+/).map(s => s.trim()).filter(Boolean); let added = 0;
   parts.forEach(s => {
     if (l.serials.includes(s)) return toast(`${s} is already recorded for this item.`, true);
     const dup = S.cur.lines.find(x => x.idx !== i && x.serials.includes(s));
@@ -380,7 +384,52 @@ function addSerials(i, raw) {
   });
   if (added && (l.qty === '' || Number(l.qty) < l.serials.length)) l.qty = String(l.serials.length);
   if (added) queue(l.idx);
-  refreshRow(i, true); renderChips(); updateProg();
+  refreshRow(i, !scanned); renderChips(); updateProg();
+  return added;
+}
+
+// ---- camera barcode scanning for serial numbers ----
+const CAM = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+let scanner = null, scanLast = { t: '', at: 0 };
+function loadScanLib() {
+  return new Promise((res, rej) => {
+    if (window.Html5Qrcode) return res();
+    const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js';
+    s.onload = res; s.onerror = () => rej(new Error('Could not load the scanner. Check your connection, or type the serial number instead.')); document.head.appendChild(s);
+  });
+}
+function beep() { try { const a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value = 880; g.gain.value = .08; o.start(); setTimeout(() => { o.stop(); a.close(); }, 120); } catch (e) {} }
+function drawScanList() {
+  const el = $('#scanlist'); if (!el) return; const l = S.cur.lines[S.scanIdx];
+  el.innerHTML = `<div class="small" style="margin:8px 0 4px"><b>${l.serials.length}</b> serial number(s) recorded for this item${l.serials.length ? ':' : ''}</div>` + l.serials.map((s, k) => `<span class="sc">${esc(s)}<a data-act="scandel" data-k="${k}" title="Remove">&times;</a></span>`).join('');
+}
+async function openScan(i) {
+  try { await loadScanLib(); } catch (e) { return toast(e.message, true); }
+  const l = S.cur.lines[i]; S.scanIdx = i; scanLast = { t: '', at: 0 };
+  const ov = document.createElement('div'); ov.id = 'scanov';
+  ov.innerHTML = `<div class="scanbox"><b style="color:var(--navy)">Scan serial number</b><div class="small">${esc(l.stock)} &middot; ${esc(l.desc)}</div>
+    <div id="scanvid" style="margin-top:8px"></div><div id="scanmsg" class="small" style="margin-top:6px">Starting camera...</div><div id="scanlist"></div>
+    <div class="foot"><button class="btn green" data-act="scanDone">Done</button></div></div>`;
+  document.body.appendChild(ov); drawScanList();
+  const F = Html5QrcodeSupportedFormats;
+  scanner = new Html5Qrcode('scanvid', { formatsToSupport: [F.CODE_128, F.CODE_39, F.CODE_93, F.QR_CODE, F.DATA_MATRIX, F.EAN_13, F.UPC_A, F.ITF, F.PDF_417, F.CODABAR, F.AZTEC], useBarCodeDetectorIfSupported: true, verbose: false });
+  try {
+    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: (w, h) => ({ width: Math.floor(w * 0.9), height: Math.floor(Math.min(h * 0.5, 180)) }) }, onScan, () => {});
+    const m = $('#scanmsg'); if (m) m.textContent = 'Hold the barcode inside the box. Each scan is added automatically; tap Done when finished.';
+  } catch (e) { closeScan(); toast('Could not start the camera. Allow camera access for this site, or type the serial number.', true); }
+}
+function onScan(text) {
+  text = String(text || '').trim(); const now = Date.now(), same = text === scanLast.t && now - scanLast.at < 1500;
+  scanLast = { t: text, at: now }; if (!text || same) return;      // ignore the same barcode while it stays in view
+  const l = S.cur.lines[S.scanIdx], added = addSerials(S.scanIdx, text, true);
+  if (added) { if (navigator.vibrate) navigator.vibrate(80); beep(); const m = $('#scanmsg'); if (m) m.textContent = 'Added ' + text; }
+  drawScanList();
+}
+function closeScan() {
+  const s = scanner; scanner = null;
+  if (s) s.stop().catch(() => {}).finally(() => { try { s.clear(); } catch (e) {} });
+  const ov = $('#scanov'); if (ov) ov.remove();
+  if (S.cur && S.scanIdx != null) { refreshRow(S.scanIdx); renderChips(); updateProg(); }
 }
 
 async function submitCount() {
@@ -650,6 +699,9 @@ document.addEventListener('click', async e => {
       case 'chip': S.filter = t.dataset.k; renderChips(); renderList(); break;
       case 'ser': { const i = +t.dataset.i; S.openSer.has(i) ? S.openSer.delete(i) : S.openSer.add(i); refreshRow(i, true); break; }
       case 'seradd': { const i = +t.dataset.i, inp = $(`#it${i} .serin`); if (inp && inp.value.trim()) addSerials(i, inp.value); break; }
+      case 'scan': openScan(+t.dataset.i); break;
+      case 'scanDone': closeScan(); break;
+      case 'scandel': { const i = S.scanIdx; S.cur.lines[i].serials.splice(+t.dataset.k, 1); queue(i); drawScanList(); break; }
       case 'serdel': { const i = +t.dataset.i, l = S.cur.lines[i]; l.serials.splice(+t.dataset.k, 1); queue(i); refreshRow(i); break; }
       case 'submitCount': submitCount(); break;
       case 'adminOpen': modal(`<h2>Admin PIN</h2><label class="f">Enter the Admin PIN<input id="pinIn" type="password" autocomplete="off"></label><div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn green" data-act="adminCheck">Unlock</button></div>`); setTimeout(() => { const i = $('#pinIn'); if (i) { i.focus(); i.onkeydown = ev => { if (ev.key === 'Enter') $('[data-act=adminCheck]').click(); }; } }, 50); break;
