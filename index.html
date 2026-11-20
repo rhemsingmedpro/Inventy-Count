@@ -409,14 +409,38 @@ async function openScan(i) {
   const ov = document.createElement('div'); ov.id = 'scanov';
   ov.innerHTML = `<div class="scanbox"><b style="color:var(--navy)">Scan serial number</b><div class="small">${esc(l.stock)} &middot; ${esc(l.desc)}</div>
     <div id="scanvid" style="margin-top:8px"></div><div id="scanmsg" class="small" style="margin-top:6px">Starting camera...</div><div id="scanlist"></div>
-    <div class="foot"><button class="btn green" data-act="scanDone">Done</button></div></div>`;
+    <div class="small muted" style="margin-top:6px">Barcode not reading? Tap <b>Take photo</b>: the phone's own camera focuses better than live video.</div>
+    <input id="scanPhotoIn" type="file" accept="image/*" capture="environment" hidden>
+    <div class="foot" style="justify-content:space-between"><button class="btn ghost" data-act="scanPhoto">&#128247; Take photo</button><button class="btn green" data-act="scanDone">Done</button></div></div>`;
   document.body.appendChild(ov); drawScanList();
-  const F = Html5QrcodeSupportedFormats;
-  scanner = new Html5Qrcode('scanvid', { formatsToSupport: [F.CODE_128, F.CODE_39, F.CODE_93, F.QR_CODE, F.DATA_MATRIX, F.EAN_13, F.UPC_A, F.ITF, F.PDF_417, F.CODABAR, F.AZTEC], useBarCodeDetectorIfSupported: true, verbose: false });
-  try {
-    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: (w, h) => ({ width: Math.floor(w * 0.9), height: Math.floor(Math.min(h * 0.5, 180)) }) }, onScan, () => {});
-    const m = $('#scanmsg'); if (m) m.textContent = 'Hold the barcode inside the box. Each scan is added automatically; tap Done when finished.';
-  } catch (e) { closeScan(); toast('Could not start the camera. Allow camera access for this site, or type the serial number.', true); }
+  $('#scanPhotoIn').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) photoScan(f); };
+  try { await startLive(); }
+  catch (e) { const m = $('#scanmsg'); if (m) m.textContent = 'Live camera is not available (allow camera access for this site). You can still use Take photo or type the serial number.'; }
+}
+const SCAN_FORMATS = () => { const F = Html5QrcodeSupportedFormats; return [F.CODE_128, F.CODE_39, F.CODE_93, F.QR_CODE, F.DATA_MATRIX, F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.ITF, F.PDF_417, F.CODABAR, F.AZTEC]; };
+async function startLive() {
+  scanner = new Html5Qrcode('scanvid', { formatsToSupport: SCAN_FORMATS(), useBarCodeDetectorIfSupported: true, verbose: false });
+  // full frame at high resolution: 1D barcodes need far more pixels than the 640x480 default
+  await scanner.start({ facingMode: 'environment' }, { fps: 10, videoConstraints: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }, onScan, () => {});
+  const m = $('#scanmsg'); if (m) m.textContent = 'Hold the barcode in view, about 15-25 cm away, steady and well lit. Each scan is added automatically; tap Done when finished.';
+}
+// Downscale a camera photo (keeps decoding fast and under iPhone canvas limits).
+async function shrinkImage(file, max) {
+  const bmp = await createImageBitmap(file), k = Math.min(1, max / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92)); return new File([blob], 'scan.jpg', { type: 'image/jpeg' });
+}
+async function photoScan(file) {
+  const m = $('#scanmsg'); if (m) m.textContent = 'Reading photo...';
+  try { if (scanner) await scanner.stop(); } catch (e) {}
+  let text = null;
+  for (const max of [2000, 1200]) {      // try a large and a smaller version of the photo
+    try { const img = await shrinkImage(file, max), r = new Html5Qrcode('scanvid', { formatsToSupport: SCAN_FORMATS(), useBarCodeDetectorIfSupported: true, verbose: false }); text = await r.scanFile(img, false); try { r.clear(); } catch (e) {} } catch (e) { text = null; }
+    if (text) break;
+  }
+  if (!$('#scanov')) return;            // closed while reading
+  if (text) { scanLast = { t: '', at: 0 }; onScan(text); } else { const mm = $('#scanmsg'); if (mm) mm.textContent = 'No barcode found in that photo. Move closer, keep the barcode flat and in focus, and try again, or type the serial number.'; }
+  try { await startLive(); } catch (e) {}
 }
 function onScan(text) {
   text = String(text || '').trim(); const now = Date.now(), same = text === scanLast.t && now - scanLast.at < 1500;
@@ -701,6 +725,7 @@ document.addEventListener('click', async e => {
       case 'seradd': { const i = +t.dataset.i, inp = $(`#it${i} .serin`); if (inp && inp.value.trim()) addSerials(i, inp.value); break; }
       case 'scan': openScan(+t.dataset.i); break;
       case 'scanDone': closeScan(); break;
+      case 'scanPhoto': $('#scanPhotoIn').click(); break;
       case 'scandel': { const i = S.scanIdx; S.cur.lines[i].serials.splice(+t.dataset.k, 1); queue(i); drawScanList(); break; }
       case 'serdel': { const i = +t.dataset.i, l = S.cur.lines[i]; l.serials.splice(+t.dataset.k, 1); queue(i); refreshRow(i); break; }
       case 'submitCount': submitCount(); break;
