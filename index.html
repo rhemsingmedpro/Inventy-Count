@@ -112,7 +112,29 @@ const cp1252 = s => new TextDecoder('windows-1252').decode(toBytes(s));
 const HDR = /^\d{2}-[A-Z]{3}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\[(\d+)\]\s+(\d+)\s+A\b/;
 function leftHalf(ln, key) { const j = ln.indexOf(key, 1); return (j > 0 ? ln.slice(0, j) : ln).replace(/\r$/, ''); }
 function rightHalf(ln, key) { const j = ln.indexOf(key, 1); return j > 0 ? ln.slice(j).replace(/\r$/, '') : null; }
+// Second supported format: "PHYSICAL INVENTORY - NARROW COUNT REPORT" (one line per item, 20 per page).
+// Page number -> Section, the per-page "Ln" number -> seq. Location ID/name, count name and print date come from the title/header lines.
+function parseNarrow(txt) {
+  const lines = txt.split('\n').map(l => l.replace(/[\r\f]/g, '')), items = [], warnings = [], MON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+  const meta = { format: 'narrow' }; let page = '1', skipped = 0;
+  const title = /PHYSICAL INVENTORY - NARROW COUNT REPORT \((\d+)\) - (.*?)\s+LOC\s+(\d+)\s+(.*?)\s*$/, stamp = /^(\d{2})-([A-Z]{3})-(\d{2})\s+\d{2}:\d{2}:\d{2}/;
+  const item = /^(.{17})\s+(\d+)\s(.*?)\s+(\S+)\s+_{3,}\s+(\d+)\s*$/;
+  lines.forEach(ln => {
+    let m;
+    if ((m = title.exec(ln)) && !meta.countNo) { meta.countNo = m[1]; meta.countName = m[2].trim(); meta.locId = m[3]; meta.locName = m[4].trim(); return; }
+    if ((m = stamp.exec(ln)) && !meta.date && MON[m[2]]) meta.date = `${String(MON[m[2]]).padStart(2, '0')}/${m[1]}/${m[3]}`;
+    if ((m = /PAGE\s+\[(\d+)\]/.exec(ln))) { page = m[1]; return; }
+    if (/_{5,}/.test(ln)) {
+      if ((m = item.exec(ln))) items.push({ section: page, seq: m[5], stock: m[1].trim(), loc: m[2], desc: m[3].trim(), uom: m[4], date: meta.date });
+      else skipped++;
+    }
+  });
+  if (skipped) warnings.push(`${skipped} line(s) looked like items but could not be read and were skipped.`);
+  if (meta.locId && items.some(i => i.loc !== meta.locId)) warnings.push('Some items have a different Location ID than the report title.');
+  return { items, warnings, meta };
+}
 function parseSpool(txt) {
+  if (/NARROW COUNT REPORT/.test(txt)) return parseNarrow(txt);
   const lines = txt.split('\n'), items = []; let cur = null; const warnings = [];
   lines.forEach((ln, i) => {
     const m = HDR.exec(ln);
@@ -529,14 +551,15 @@ function admImport() {
     else {
       const known = S.data.locations.find(l => l.id === I.locId);
       prev = `<div class="card"><h3 style="margin-top:0">Ready to import</h3>
-      <p><b>${I.parsed.items.length}</b> items &middot; Location ID <b>${esc(I.locId)}</b> &middot; Count date <b>${esc(I.date)}</b> &middot; File <span class="muted">${esc(I.fileName)}</span></p>
+      <p><b>${I.parsed.items.length}</b> items &middot; Location ID <b>${esc(I.locId)}</b> &middot; File <span class="muted">${esc(I.fileName)}</span>${I.parsed.meta ? ' &middot; <span class="muted">Narrow count report' + (I.parsed.meta.countNo ? ' #' + esc(I.parsed.meta.countNo) : '') + '</span>' : ''}</p>
       ${I.parsed.warnings.map(w => `<div class="alert warn">${esc(w)}</div>`).join('')}
-      <label class="f">Count name (shown to staff)<input id="countName" maxlength="80" placeholder="e.g. Spring CPAP Count" value="${esc(I.name || '')}"></label>
+      <div class="row" style="align-items:flex-start"><label class="f" style="margin:0;flex:1;min-width:240px">Count name (shown to staff)<input id="countName" maxlength="80" placeholder="e.g. Spring CPAP Count" value="${esc(I.name || '')}"></label>
+      <label class="f" style="margin:0">Count date<input id="countDate" maxlength="20" placeholder="MM/DD/YY" value="${esc(I.date || '')}"></label></div>
       <div class="row" style="align-items:flex-start"><label class="f" style="margin:0">Allow sub counts?<select id="allowSub"><option value="N">No</option><option value="Y">Yes</option></select></label>
       <label class="f" id="subWrap" style="margin:0;flex:1;min-width:240px;display:none">Sub count name (separate several with commas)<input id="subNames" maxlength="160" placeholder="e.g. Deer Valley"></label></div>
       <div class="small muted" id="subHint" style="display:none;margin:4px 0 10px">The main count (named above) and each sub count are created now with the same item list. Staff count each one separately, and exporting the main count adds the sub counts together. You can add more sub counts later.</div>
       ${known ? `<div class="alert info">Office: <b>${esc(known.name)}</b> (matched from Location ID ${esc(I.locId)})</div>`
-        : `<div class="alert warn">Location ID <b>${esc(I.locId)}</b> has not been used before. Please name this office:<label class="f" style="margin-top:8px">Office name<input id="newLoc" placeholder="e.g. Kamloops"></label></div>`}
+        : `<div class="alert warn">Location ID <b>${esc(I.locId)}</b> has not been used before. Please name this office:<label class="f" style="margin-top:8px">Office name<input id="newLoc" placeholder="e.g. Kamloops" value="${esc(I.locName || '')}"></label></div>`}
       <div class="small muted" style="margin-bottom:10px">First items: ${I.parsed.items.slice(0, 5).map(i => esc(i.stock) + ' - ' + esc(cp1252(i.desc || ''))).join(' &nbsp;|&nbsp; ')}</div>
       <button class="btn green" data-act="doImport">Import count</button> <button class="btn ghost" data-act="cancelImport">Cancel</button></div>`;
     }
@@ -549,7 +572,11 @@ function admImport() {
     S.imp = { fileName: f.name, txt, parsed };
     if (!parsed.items.length) S.imp.error = 'No count items were recognised in this file. Is it the count-sheet export?';
     else if (locs.length > 1) S.imp.error = `This file contains more than one Location ID (${locs.join(', ')}). Please export one office per file.`;
-    else { S.imp.locId = locs[0]; S.imp.date = dates.join(' / '); }
+    else {
+      S.imp.locId = locs[0]; S.imp.date = dates.join(' / ');
+      const mt = parsed.meta;   // narrow count report: pre-fill name and office from the report title
+      if (mt) { S.imp.name = mt.countName || ''; S.imp.locName = (mt.locName || '').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()); }
+    }
     admImport();
   });
   $('#impFile').onchange = e => take(e.target.files[0]);
@@ -561,12 +588,13 @@ async function doImport() {
   const I = S.imp, known = S.data.locations.find(l => l.id === I.locId), nm = $('#newLoc') ? $('#newLoc').value.trim() : '';
   if (!known && !nm) return toast('Please enter a name for this office.', true);
   const items = I.parsed.items.map(i => { const desc = cp1252(i.desc || ''); return { stock: i.stock, desc, uom: i.uom || '', section: i.section, seq: i.seq, serialized: SER_GUESS.test(desc) }; });
+  const date = ($('#countDate').value || '').trim(); if (!date) return toast('Please enter the count date.', true);
   const mainName = ($('#countName').value || '').trim(), subOn = $('#allowSub').value === 'Y';
   const subNames = subOn ? ($('#subNames').value || '').split(',').map(s => s.trim()).filter(Boolean) : [];
   if (subOn && !subNames.length) return toast('Enter a name for the sub count, or set Allow sub counts to No.', true);
   if (subOn && !mainName) return toast('Name the main count too (e.g. Bridgeland) so it can be told apart from its sub counts.', true);
   try {
-    await adm('importCount', { subNames, locationId: I.locId, locationName: known ? '' : nm, name: mainName, countDate: I.date, fileName: I.fileName, items, fileB64: btoa(I.txt), by: S.user || 'Admin' });
+    await adm('importCount', { subNames, locationId: I.locId, locationName: known ? '' : nm, name: mainName, countDate: date, fileName: I.fileName, items, fileB64: btoa(I.txt), by: S.user || 'Admin' });
     S.imp = null; await reload(); S.tab = 'counts'; renderAdmin(); toast('Count imported.');
   } catch (e) { toast(e.message, true); }
 }
