@@ -683,7 +683,8 @@ async function exportXlsx(id) {
   try {
     const r = await api('count', { id });
     const head = exportHeader(c, [c]), rows = [...head, ['Section', 'Line', 'Stock number', 'Description', 'Unit', 'Qty counted', 'Serial numbers']];
-    secLineOrder(r.lines).forEach(l => rows.push([l.section + ' ' + l.seq, l.idx + 1, l.stock, l.desc, l.uom, l.qty === '' ? '' : Number(l.qty), l.serials.join('; ')]));
+    let prevSec = null;
+    secLineOrder(r.lines).forEach(l => { if (prevSec !== null && l.section !== prevSec) rows.push([]); prevSec = l.section; rows.push([l.section + ' ' + l.seq, l.idx + 1, l.stock, l.desc, l.uom, l.qty === '' ? '' : Number(l.qty), l.serials.join('; ')]); });
     const name = `${(c.name || 'count').replace(/[^\w-]+/g, '_')}-${locName(c.loc).replace(/[^\w-]+/g, '_')}-loc${c.loc}-${c.date.replace(/\//g, '-')}.xlsx`;
     download(name, buildXlsx('Count', rows, [9, 7, 20, 42, 7, 12, 40], { hdr: head.length }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Exported ' + name);
   } catch (e) { toast(e.message, true); }
@@ -703,7 +704,10 @@ async function exportMerged(ids) {
     const seen = {}, heads = cs.map(c => { let n = cname(c); seen[n] = (seen[n] || 0) + 1; return seen[n] > 1 ? `${n} (${seen[n]})` : n; });
     const main = cs.find(c => !c.parent) || cs[0], first = cs[0];
     const head = exportHeader(first, cs), rows = [...head, ['Section', 'Line', 'Stock number', 'Description', 'Unit', 'TOTAL qty', ...heads, 'Serial numbers']];
+    let prevSec = null;
     base.map((l, k) => ({ l, k })).sort((a, b) => natCmp(a.l.section, b.l.section) || natCmp(a.l.seq, b.l.seq) || a.k - b.k).forEach(({ l, k }) => {
+      if (prevSec !== null && l.section !== prevSec) rows.push([]);    // blank row between sections
+      prevSec = l.section;
       const q = data.map(L => L[k].qty), any = q.some(v => v !== ''), total = q.reduce((n, v) => n + (v === '' ? 0 : Number(v)), 0);
       const ser = data.map((L, i) => L[k].serials.length ? `${heads[i]}: ${L[k].serials.join(', ')}` : '').filter(Boolean).join(' | ');
       rows.push([l.section + ' ' + l.seq, k + 1, l.stock, l.desc, l.uom, any ? total : '', ...q.map(v => v === '' ? '' : Number(v)), ser]);
