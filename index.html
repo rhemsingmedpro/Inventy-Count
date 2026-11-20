@@ -180,9 +180,12 @@ const Demo = {
         case 'importCount': {
           needAdmin();
           if (!db.locations.find(l => l.id === String(p.locationId))) { if (!p.locationName) throw new Error('Location name required'); db.locations.push({ id: String(p.locationId), name: p.locationName }); }
-          const id = 'C' + Date.now();
-          db.counts.push({ id, loc: String(p.locationId), date: p.countDate, file: p.fileName, status: 'Open', name: p.name || '', total: p.items.length, counted: 0, importedBy: p.by ||'Admin', importedAt: new Date().toISOString(), submittedBy: '', submittedAt: '', approvedBy: '', approvedAt: '' });
-          db.lines[id] = p.items.map((it, i) => ({ idx: i, stock: it.stock, desc: it.desc, uom: it.uom, section: it.section, seq: it.seq, qty: '', serials: [], by: '' }));
+          const mk = (id, name, parent) => {
+            db.counts.push({ id, loc: String(p.locationId), date: p.countDate, file: p.fileName, status: 'Open', name, parent: parent || '', total: p.items.length, counted: 0, importedBy: p.by || 'Admin', importedAt: new Date().toISOString(), submittedBy: '', submittedAt: '', approvedBy: '', approvedAt: '' });
+            db.lines[id] = p.items.map((it, i) => ({ idx: i, stock: it.stock, desc: it.desc, uom: it.uom, section: it.section, seq: it.seq, qty: '', serials: [], by: '' }));
+          };
+          const id = 'C' + Date.now(); mk(id, p.name || '', '');
+          (p.subNames || []).forEach((n, k) => { n = String(n || '').trim(); if (n) mk(id + 's' + k, n, id); });
           db.files[id] = p.fileB64;
           p.items.forEach(it => { if (!(it.stock in db.items)) db.items[it.stock] = it.serialized ? 'Y' : 'N'; });
           return { countId: id };
@@ -200,7 +203,15 @@ const Demo = {
           return {};
         }
         case 'getFile': needAdmin(); return { fileB64: db.files[p.id] };
-        case 'deleteCount': needAdmin(); db.counts = db.counts.filter(c => c.id !== p.id); delete db.lines[p.id]; delete db.files[p.id]; return {};
+        case 'deleteCount': needAdmin(); db.counts.filter(c => c.id === p.id || c.parent === p.id).forEach(c => { delete db.lines[c.id]; delete db.files[c.id]; }); db.counts = db.counts.filter(c => c.id !== p.id && c.parent !== p.id); return {};
+        case 'addSubCount': {
+          needAdmin(); let par = find(p.id); if (par.parent) par = find(par.parent);
+          const nm = String(p.name || '').trim(); if (!nm) throw new Error('Sub count name required');
+          const id = 'C' + Date.now() + 'x';
+          db.counts.push({ id, loc: par.loc, date: par.date, file: par.file, status: 'Open', name: nm, parent: par.id, total: par.total, counted: 0, importedBy: p.by || 'Admin', importedAt: new Date().toISOString(), submittedBy: '', submittedAt: '', approvedBy: '', approvedAt: '' });
+          db.lines[id] = db.lines[par.id].map(l => ({ idx: l.idx, stock: l.stock, desc: l.desc, uom: l.uom, section: l.section, seq: l.seq, qty: '', serials: [], by: '' }));
+          return { countId: id };
+        }
         case 'saveLocation': { needAdmin(); const l = db.locations.find(x => x.id === String(p.locationId)); if (l) l.name = p.name; else db.locations.push({ id: String(p.locationId), name: p.name }); return {}; }
         case 'addStaff': needAdmin(); if (!db.staff.includes(p.name)) db.staff.push(p.name); return {};
         case 'removeStaff': needAdmin(); db.staff = db.staff.filter(n => n !== p.name); return {};
@@ -261,7 +272,7 @@ function renderHome() {
   <div class="row"><label class="f" style="margin:0">Office<select id="offSel"><option value="">All offices</option>${offices.map(o => `<option value="${esc(o.id)}" ${S.office === o.id ? 'selected' : ''}>${esc(o.name)} (${esc(o.id)})</option>`).join('')}</select></label>
   <label style="font-size:14px"><input type="checkbox" id="showDone" ${S.showDone ? 'checked' : ''}> Show submitted / approved counts</label></div>
   ${list.length ? `<div class="cgrid">${list.map(c => `<div class="ccard" data-act="openCount" data-id="${esc(c.id)}"><div class="nm">${esc(cname(c))}</div>
-    <div class="small"><b>${esc(locName(c.loc))}</b> <span class="muted">&middot; Location ${esc(c.loc)} &middot; Count date ${esc(c.date)}</span></div>
+    <div class="small"><b>${esc(locName(c.loc))}</b> <span class="muted">&middot; Location ${esc(c.loc)} &middot; Count date ${esc(c.date)}</span></div>${c.parent ? '<div class="small"><span class="badge b-ser">Sub count</span></div>' : ''}
     <div style="margin-top:6px"><span class="badge b-${c.status}">${c.status}</span> <span class="small">${c.counted} of ${c.total} counted</span></div>
     <div class="small" style="margin-top:8px">Blank count sheet: <button class="btn sm ghost" data-act="printSheet" data-id="${esc(c.id)}">Print / PDF</button> <button class="btn sm ghost" data-act="blankXlsx" data-id="${esc(c.id)}">Excel</button></div>
     <div class="bar"><i style="width:${c.total ? Math.round(c.counted / c.total * 100) : 0}%"></i></div></div>`).join('')}</div>`
@@ -378,22 +389,38 @@ function renderAdmin() {
   $('#app').innerHTML = `<h2>Admin</h2><div class="row">${tabs.map(t => `<button class="btn ${S.tab === t[0] ? '' : 'ghost'}" data-act="admTab" data-v="${t[0]}">${t[1]}</button>`).join('')}</div><div id="admBody"></div>`;
   ({ counts: admCounts, import: admImport, offices: admOffices, staff: admStaff, serial: admSerial })[S.tab]();
 }
+const subsOf = id => S.data.counts.filter(c => c.parent === id);
 function admCounts() {
-  $('#admBody').innerHTML = `<div class="card"><div class="row"><label class="f" style="margin:0;flex:1;min-width:220px">Search counts<input id="aq" placeholder="Office name, Location ID, count date, file name..." value="${esc(S.aq)}"></label>
-  <label class="f" style="margin:0">Status<select id="ast"><option value="">All</option>${['Open', 'Submitted', 'Approved'].map(s => `<option ${S.ast === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label></div>
-  <div class="tblwrap"><table><thead><tr><th>Count / Office</th><th>Count date</th><th>Status</th><th>Progress</th><th>Submitted</th><th></th></tr></thead><tbody id="ctb"></tbody></table></div></div>`;
+  if (!S.sel) S.sel = new Set();
+  $('#admBody').innerHTML = `<div class="card"><div class="row"><label class="f" style="margin:0;flex:1;min-width:220px">Search counts<input id="aq" placeholder="Count name, office, Location ID, count date, file name..." value="${esc(S.aq)}"></label>
+  <label class="f" style="margin:0">Status<select id="ast"><option value="">All</option>${['Open', 'Submitted', 'Approved'].map(s => `<option ${S.ast === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+  <button class="btn" id="mergeBtn" data-act="admMerge" disabled>Export selected (merged)</button></div>
+  <div class="small muted" style="margin-bottom:8px">Tick two or more counts made from the same count sheet to export them as one Excel file with a total. A main count's <b>Export Excel</b> button automatically includes its sub counts.</div>
+  <div class="tblwrap"><table><thead><tr><th></th><th>Count / Office</th><th>Count date</th><th>Status</th><th>Progress</th><th>Submitted</th><th></th></tr></thead><tbody id="ctb"></tbody></table></div></div>`;
+  const syncBtn = () => { const b = $('#mergeBtn'); if (b) { b.disabled = S.sel.size < 2; b.textContent = S.sel.size >= 2 ? `Export selected (merged, ${S.sel.size})` : 'Export selected (merged)'; } };
   const draw = () => {
-    const w = S.aq.toLowerCase().split(/\s+/).filter(Boolean);
-    const rows = S.data.counts.filter(c => (!S.ast || c.status === S.ast) && w.every(x => ((c.name || '') + ' ' + locName(c.loc) + ' ' + c.loc + ' ' + c.date + ' ' + c.file + ' ' + c.status).toLowerCase().includes(x)))
-      .sort((a, b) => (b.importedAt || '').localeCompare(a.importedAt || ''));
-    $('#ctb').innerHTML = rows.map(c => `<tr><td><b>${esc(cname(c))}</b><div class="small">${esc(locName(c.loc))} <span class="muted">&middot; Loc ${esc(c.loc)} &middot; ${esc(c.file)}</span></div></td><td>${esc(c.date)}</td><td><span class="badge b-${c.status}">${c.status}</span></td>
+    const w = S.aq.toLowerCase().split(/\s+/).filter(Boolean), all = S.data.counts, ids = new Set(all.map(c => c.id));
+    const ok = c => (!S.ast || c.status === S.ast) && w.every(x => ((c.name || '') + ' ' + locName(c.loc) + ' ' + c.loc + ' ' + c.date + ' ' + c.file + ' ' + c.status).toLowerCase().includes(x));
+    const mains = all.filter(c => !c.parent || !ids.has(c.parent)).sort((a, b) => (b.importedAt || '').localeCompare(a.importedAt || ''));
+    const rows = []; mains.forEach(m => { rows.push(m); subsOf(m.id).sort((a, b) => (a.importedAt || '').localeCompare(b.importedAt || '')).forEach(s => rows.push(s)); });
+    $('#ctb').innerHTML = rows.filter(ok).map(c => {
+      const isSub = !!c.parent && ids.has(c.parent), subs = isSub ? [] : subsOf(c.id), par = isSub ? all.find(x => x.id === c.parent) : null;
+      return `<tr style="${isSub ? 'background:#fafcfe' : ''}"><td><input type="checkbox" data-sel="${esc(c.id)}" ${S.sel.has(c.id) ? 'checked' : ''} aria-label="Select for merged export"></td>
+      <td style="${isSub ? 'padding-left:26px' : ''}">${isSub ? '<span class="badge b-ser">Sub count</span> ' : ''}<b>${esc(cname(c))}</b>${subs.length ? ` <span class="small muted">+ ${subs.length} sub count${subs.length > 1 ? 's' : ''}</span>` : ''}
+        <div class="small">${esc(locName(c.loc))} <span class="muted">&middot; Loc ${esc(c.loc)} &middot; ${esc(c.file)}${par ? ' &middot; sub of ' + esc(cname(par)) : ''}</span></div></td>
+      <td>${esc(c.date)}</td><td><span class="badge b-${c.status}">${c.status}</span></td>
       <td>${c.counted}/${c.total}</td><td class="small">${c.submittedBy ? esc(c.submittedBy) + '<br>' + esc(fmtTime(c.submittedAt)) : ''}${c.approvedBy ? '<br>Approved: ' + esc(c.approvedBy) : ''}</td>
       <td style="white-space:nowrap"><button class="btn sm ghost" data-act="admView" data-id="${esc(c.id)}">View</button> <button class="btn sm ghost" data-act="admRename" data-id="${esc(c.id)}">Rename</button>
+      ${isSub ? '' : `<button class="btn sm ghost" data-act="admAddSub" data-id="${esc(c.id)}">+ Sub count</button>`}
       ${c.status === 'Submitted' ? `<button class="btn sm green" data-act="admApprove" data-id="${esc(c.id)}">Approve</button>` : ''}
-      ${c.status !== 'Open' ? `<button class="btn sm" data-act="admExport" data-id="${esc(c.id)}">Export Excel</button> <button class="btn sm ghost" data-act="admReopen" data-id="${esc(c.id)}">Reopen</button>` : ''}
-      <button class="btn sm danger" data-act="admDelete" data-id="${esc(c.id)}">Delete</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No counts found.</td></tr>';
+      ${c.status !== 'Open' ? `<button class="btn sm" data-act="admExport" data-id="${esc(c.id)}">Export Excel${subs.length ? ' (+ subs)' : ''}</button> <button class="btn sm ghost" data-act="admReopen" data-id="${esc(c.id)}">Reopen</button>` : ''}
+      <button class="btn sm danger" data-act="admDelete" data-id="${esc(c.id)}">Delete</button></td></tr>`;
+    }).join('') || '<tr><td colspan="7" class="muted">No counts found.</td></tr>';
+    syncBtn();
   };
-  $('#aq').oninput = e => { S.aq = e.target.value; draw(); }; $('#ast').onchange = e => { S.ast = e.target.value; draw(); }; draw();
+  $('#aq').oninput = e => { S.aq = e.target.value; draw(); }; $('#ast').onchange = e => { S.ast = e.target.value; draw(); };
+  $('#ctb').onchange = e => { const t = e.target; if (t.dataset && t.dataset.sel) { t.checked ? S.sel.add(t.dataset.sel) : S.sel.delete(t.dataset.sel); syncBtn(); } };
+  draw();
 }
 function admImport() {
   const I = S.imp;
@@ -406,6 +433,9 @@ function admImport() {
       <p><b>${I.parsed.items.length}</b> items &middot; Location ID <b>${esc(I.locId)}</b> &middot; Count date <b>${esc(I.date)}</b> &middot; File <span class="muted">${esc(I.fileName)}</span></p>
       ${I.parsed.warnings.map(w => `<div class="alert warn">${esc(w)}</div>`).join('')}
       <label class="f">Count name (shown to staff)<input id="countName" maxlength="80" placeholder="e.g. Spring CPAP Count" value="${esc(I.name || '')}"></label>
+      <div class="row" style="align-items:flex-start"><label class="f" style="margin:0">Allow sub counts?<select id="allowSub"><option value="N">No</option><option value="Y">Yes</option></select></label>
+      <label class="f" id="subWrap" style="margin:0;flex:1;min-width:240px;display:none">Sub count name (separate several with commas)<input id="subNames" maxlength="160" placeholder="e.g. Deer Valley"></label></div>
+      <div class="small muted" id="subHint" style="display:none;margin:4px 0 10px">The main count (named above) and each sub count are created now with the same item list. Staff count each one separately, and exporting the main count adds the sub counts together. You can add more sub counts later.</div>
       ${known ? `<div class="alert info">Office: <b>${esc(known.name)}</b> (matched from Location ID ${esc(I.locId)})</div>`
         : `<div class="alert warn">Location ID <b>${esc(I.locId)}</b> has not been used before. Please name this office:<label class="f" style="margin-top:8px">Office name<input id="newLoc" placeholder="e.g. Kamloops"></label></div>`}
       <div class="small muted" style="margin-bottom:10px">First items: ${I.parsed.items.slice(0, 5).map(i => esc(i.stock) + ' - ' + esc(cp1252(i.desc || ''))).join(' &nbsp;|&nbsp; ')}</div>
@@ -424,6 +454,7 @@ function admImport() {
     admImport();
   });
   $('#impFile').onchange = e => take(e.target.files[0]);
+  const as = $('#allowSub'); if (as) as.onchange = () => { const on = as.value === 'Y'; $('#subWrap').style.display = on ? '' : 'none'; $('#subHint').style.display = on ? '' : 'none'; if (on) $('#subNames').focus(); };
   const d = $('#drop'); d.ondragover = e => { e.preventDefault(); d.classList.add('over'); }; d.ondragleave = () => d.classList.remove('over');
   d.ondrop = e => { e.preventDefault(); d.classList.remove('over'); take(e.dataTransfer.files[0]); };
 }
@@ -431,8 +462,12 @@ async function doImport() {
   const I = S.imp, known = S.data.locations.find(l => l.id === I.locId), nm = $('#newLoc') ? $('#newLoc').value.trim() : '';
   if (!known && !nm) return toast('Please enter a name for this office.', true);
   const items = I.parsed.items.map(i => { const desc = cp1252(i.desc || ''); return { stock: i.stock, desc, uom: i.uom || '', section: i.section, seq: i.seq, serialized: SER_GUESS.test(desc) }; });
+  const mainName = ($('#countName').value || '').trim(), subOn = $('#allowSub').value === 'Y';
+  const subNames = subOn ? ($('#subNames').value || '').split(',').map(s => s.trim()).filter(Boolean) : [];
+  if (subOn && !subNames.length) return toast('Enter a name for the sub count, or set Allow sub counts to No.', true);
+  if (subOn && !mainName) return toast('Name the main count too (e.g. Bridgeland) so it can be told apart from its sub counts.', true);
   try {
-    await adm('importCount', { locationId: I.locId, locationName: known ? '' : nm, name: ($('#countName').value || '').trim(), countDate: I.date, fileName: I.fileName, items, fileB64: btoa(I.txt), by: S.user || 'Admin' });
+    await adm('importCount', { subNames, locationId: I.locId, locationName: known ? '' : nm, name: mainName, countDate: I.date, fileName: I.fileName, items, fileB64: btoa(I.txt), by: S.user || 'Admin' });
     S.imp = null; await reload(); S.tab = 'counts'; renderAdmin(); toast('Count imported.');
   } catch (e) { toast(e.message, true); }
 }
@@ -487,8 +522,9 @@ function zipStore(files) { // files: [{name, data(string)}]
 function buildXlsx(sheetName, rows, widths, opts = {}) { // rows: array of arrays; numbers become numeric cells, everything else text
   const X = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const col = i => { let s = ''; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s; };
-  const sheetRows = rows.map((r, ri) => `<row r="${ri + 1}"${ri > 0 && opts.rowHt ? ` ht="${opts.rowHt}" customHeight="1"` : ""}>` + r.map((v, ci) => {
-    const ref = col(ci) + (ri + 1), st = ri === 0 ? ' s="1"' : '';
+  const HD = opts.hdr || 0; // number of title rows above the column-header row
+  const sheetRows = rows.map((r, ri) => `<row r="${ri + 1}"${ri > HD && opts.rowHt ?` ht="${opts.rowHt}" customHeight="1"` : ""}>` + r.map((v, ci) => {
+    const ref = col(ci) + (ri + 1), st = (ri === 0 || ri === HD) ? ' s="1"' : '';
     if (v === '' || v == null) return '';
     if (typeof v === 'number') return `<c r="${ref}"${st}><v>${v}</v></c>`;
     return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${X(v)}</t></is></c>`;
@@ -498,20 +534,55 @@ function buildXlsx(sheetName, rows, widths, opts = {}) { // rows: array of array
   return zipStore([
     { name: '[Content_Types].xml', data: H + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
     { name: '_rels/.rels', data: H + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${RS}/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
-    { name: 'xl/workbook.xml', data: H + `<workbook xmlns="${NS}" xmlns:r="${RS}"><sheets><sheet name="${X(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">${X(sheetName).slice(0, 31)}!$1:$1</definedName></definedNames></workbook>` },
+    { name: 'xl/workbook.xml', data: H + `<workbook xmlns="${NS}" xmlns:r="${RS}"><sheets><sheet name="${X(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">${X(sheetName).slice(0, 31)}!$${HD + 1}:$${HD + 1}</definedName></definedNames></workbook>` },
     { name: 'xl/_rels/workbook.xml.rels', data: H + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${RS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RS}/styles" Target="styles.xml"/></Relationships>` },
     { name: 'xl/styles.xml', data: H + `<styleSheet xmlns="${NS}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>` },
-    { name: 'xl/worksheets/sheet1.xml', data: H + `<worksheet xmlns="${NS}"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${sheetRows}</sheetData><printOptions gridLines="1"/><pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup orientation="portrait" fitToWidth="1" fitToHeight="0"/></worksheet>` }
+    { name: 'xl/worksheets/sheet1.xml', data: H + `<worksheet xmlns="${NS}"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"><pane ySplit="${HD + 1}" topLeftCell="A${HD + 2}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${sheetRows}</sheetData><printOptions gridLines="1"/><pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup orientation="portrait" fitToWidth="1" fitToHeight="0"/></worksheet>` }
   ]);
+}
+// Export ordering: by Section, then Line (the sequence number within the section).
+const natCmp = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true });
+const secLineOrder = lines => lines.map((l, i) => ({ l, i })).sort((a, b) => natCmp(a.l.section, b.l.section) || natCmp(a.l.seq, b.l.seq) || a.i - b.i).map(x => x.l);
+// Title block at the top of an export (Location, Office, Count date, ...), followed by a blank row.
+function exportHeader(c, cs) {
+  const by = [...new Set(cs.map(x => x.submittedBy).filter(Boolean))].join('; ');
+  const h = [['Location ID: ' + c.loc], ['Office: ' + locName(c.loc)], ['Count date: ' + c.date]];
+  h.push([cs.length > 1 ? 'Counts included: ' + cs.map(cname).join(', ') : 'Count: ' + cname(c)]);
+  if (by) h.push(['Counted by: ' + by]);
+  h.push([]); return h;
 }
 async function exportXlsx(id) {
   const c = S.data.counts.find(x => x.id === id);
   try {
     const r = await api('count', { id });
-    const rows = [['Count name', 'Location ID', 'Office', 'Count date', 'Line', 'Section', 'Stock number', 'Description', 'Unit', 'Qty counted', 'Serial numbers', 'Counted by']];
-    r.lines.forEach((l, k) => rows.push([c.name || '', c.loc, locName(c.loc), c.date, k + 1, l.section + ' ' + l.seq, l.stock, l.desc, l.uom, l.qty === '' ? '' : Number(l.qty), l.serials.join('; '), c.submittedBy]));
+    const head = exportHeader(c, [c]), rows = [...head, ['Section', 'Line', 'Stock number', 'Description', 'Unit', 'Qty counted', 'Serial numbers']];
+    secLineOrder(r.lines).forEach(l => rows.push([l.section + ' ' + l.seq, l.idx + 1, l.stock, l.desc, l.uom, l.qty === '' ? '' : Number(l.qty), l.serials.join('; ')]));
     const name = `${(c.name || 'count').replace(/[^\w-]+/g, '_')}-${locName(c.loc).replace(/[^\w-]+/g, '_')}-loc${c.loc}-${c.date.replace(/\//g, '-')}.xlsx`;
-    download(name, buildXlsx('Count', rows, [24, 11, 18, 12, 6, 10, 20, 42, 7, 12, 40, 18]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Exported ' + name);
+    download(name, buildXlsx('Count', rows, [9, 7, 20, 42, 7, 12, 40], { hdr: head.length }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Exported ' + name);
+  } catch (e) { toast(e.message, true); }
+}
+
+// Merge several counts of the same count sheet into one Excel file: Total + a column per count.
+async function exportMerged(ids) {
+  try {
+    const cs = ids.map(id => S.data.counts.find(x => x.id === id)).filter(Boolean);
+    if (cs.length < 2) return toast('Select at least two counts to merge.', true);
+    if (new Set(cs.map(c => c.loc)).size > 1) return toast('These counts have different Location IDs, so they cannot be merged.', true);
+    const open = cs.filter(c => c.status === 'Open');
+    if (open.length && !await confirmBox('Some counts are not submitted', `<p>These counts are still <b>Open</b>:</p><ul>${open.map(c => `<li>${esc(cname(c))} (${c.counted} of ${c.total} counted)</li>`).join('')}</ul><p>Only quantities entered so far are included, and items not counted yet are treated as blank (0 in the total).</p>`, 'Export anyway')) return;
+    const data = await Promise.all(cs.map(c => api('count', { id: c.id }).then(r => r.lines)));
+    const base = data[0];
+    data.forEach((L, i) => { if (L.length !== base.length || L.some((l, k) => l.stock !== base[k].stock)) throw new Error(`"${cname(cs[i])}" is not from the same count sheet as "${cname(cs[0])}" (different items).`); });
+    const seen = {}, heads = cs.map(c => { let n = cname(c); seen[n] = (seen[n] || 0) + 1; return seen[n] > 1 ? `${n} (${seen[n]})` : n; });
+    const main = cs.find(c => !c.parent) || cs[0], first = cs[0];
+    const head = exportHeader(first, cs), rows = [...head, ['Section', 'Line', 'Stock number', 'Description', 'Unit', 'TOTAL qty', ...heads, 'Serial numbers']];
+    base.map((l, k) => ({ l, k })).sort((a, b) => natCmp(a.l.section, b.l.section) || natCmp(a.l.seq, b.l.seq) || a.k - b.k).forEach(({ l, k }) => {
+      const q = data.map(L => L[k].qty), any = q.some(v => v !== ''), total = q.reduce((n, v) => n + (v === '' ? 0 : Number(v)), 0);
+      const ser = data.map((L, i) => L[k].serials.length ? `${heads[i]}: ${L[k].serials.join(', ')}` : '').filter(Boolean).join(' | ');
+      rows.push([l.section + ' ' + l.seq, k + 1, l.stock, l.desc, l.uom, any ? total : '', ...q.map(v => v === '' ? '' : Number(v)), ser]);
+    });
+    const name = `${(main.name || 'count').replace(/[^\w-]+/g, '_')}-MERGED-${cs.length}counts-${locName(first.loc).replace(/[^\w-]+/g, '_')}-loc${first.loc}-${first.date.replace(/\//g, '-')}.xlsx`;
+    download(name, buildXlsx('Merged count', rows, [9, 7, 20, 42, 7, 12, ...heads.map(() => 15), 44], { hdr: head.length }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Exported ' + name);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -580,8 +651,10 @@ document.addEventListener('click', async e => {
       case 'admRename': { const c = S.data.counts.find(x => x.id === id), n = prompt('Count name', c.name || ''); if (n === null) break; await adm('renameCount', { id, name: n.trim() }); await reload(); admCounts(); toast('Renamed.'); break; }
       case 'admApprove': if (await confirmBox('Approve count', 'Approve this count? It can then be exported.', 'Approve')) { await adm('setStatus', { id, status: 'Approved', by: S.user || 'Admin' }); await reload(); admCounts(); toast('Approved.'); } break;
       case 'admReopen': if (await confirmBox('Reopen count', 'Return this count to staff so it can be edited again?', 'Reopen')) { await adm('setStatus', { id, status: 'Open' }); await reload(); admCounts(); toast('Count reopened.'); } break;
-      case 'admDelete': if (await confirmBox('Delete count', '<b>Permanently delete</b> this count, including quantities and serial numbers? This cannot be undone.', 'Delete')) { await adm('deleteCount', { id }); await reload(); admCounts(); toast('Deleted.'); } break;
-      case 'admExport': exportXlsx(id); break;
+      case 'admDelete': if (await confirmBox('Delete count', '<b>Permanently delete</b> this count, including quantities and serial numbers' + (subsOf(id).length ? `, <b>and its ${subsOf(id).length} sub count(s)</b>` : '') + '? This cannot be undone.', 'Delete')) { await adm('deleteCount', { id }); S.sel.delete(id); subsOf(id).forEach(s => S.sel.delete(s.id)); await reload(); admCounts(); toast('Deleted.'); } break;
+      case 'admExport': { const subs = subsOf(id); subs.length ? exportMerged([id, ...subs.map(s => s.id)]) : exportXlsx(id); break; }
+      case 'admMerge': exportMerged([...S.sel]); break;
+      case 'admAddSub': { const c = S.data.counts.find(x => x.id === id), n = prompt('Name for the new sub count (same item list as "' + cname(c) + '")', ''); if (!n || !n.trim()) break; await adm('addSubCount', { id, name: n.trim(), by: S.user || 'Admin' }); await reload(); admCounts(); toast('Sub count added.'); break; }
       case 'printSheet': printSheet(id); break;
       case 'blankXlsx': blankXlsx(id); break;
       case 'doImport': doImport(); break;
